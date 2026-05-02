@@ -5,7 +5,11 @@
 (function() {
   'use strict';
 
-  if (location.hostname !== 'chat.deepseek.com') return;
+  function isDeepSeekHost() {
+    return location.hostname === 'deepseek.com' || location.hostname.slice(-13) === '.deepseek.com';
+  }
+
+  if (!isDeepSeekHost()) return;
 
   var core = window.ChatSavorCore;
   if (!core) return;
@@ -108,18 +112,32 @@
   }
 
   // ── Stability check ──
+  function hasInjectedButton(el) {
+    return !!(el && el.nextElementSibling && el.nextElementSibling.classList && el.nextElementSibling.classList.contains('ai-saver-host'));
+  }
+
   function waitForStable(el, callback) {
-    if (processed.has(el)) return;
+    if (processed.has(el) || hasInjectedButton(el)) {
+      processed.add(el);
+      return;
+    }
     var lastLen = (el.textContent || '').trim().length;
     if (lastLen === 0) return;
 
     setTimeout(function check() {
-      if (processed.has(el)) return;
+      if (processed.has(el) || hasInjectedButton(el)) {
+        processed.add(el);
+        return;
+      }
       var newLen = (el.textContent || '').trim().length;
       if (newLen === 0) return;
       if (newLen === lastLen) {
-        processed.add(el);
-        callback(el);
+        var handled = callback(el);
+        if (handled !== false) {
+          processed.add(el);
+        } else {
+          setTimeout(check, STABILITY_MS);
+        }
       } else {
         lastLen = newLen;
         setTimeout(check, STABILITY_MS);
@@ -129,8 +147,9 @@
 
   // ── Inject button ──
   function injectButton(el) {
-    if (el.parentElement && el.parentElement.querySelector('.ai-saver-host')) return;
-    core.injectButtonAfter(el, function() {
+    if (!el || !el.parentElement) return false;
+    if (hasInjectedButton(el)) return true;
+    return core.injectButtonAfter(el, function() {
       var result = core.extractMarkdown(el);
       if (result && result.markdown) core.showPreviewModal(result.markdown);
     });
@@ -138,12 +157,7 @@
 
   // ── Scan ──
   function scan() {
-    // Thinking sections
-    document.querySelectorAll(THINKING_SEL).forEach(function(el) {
-      if (!processed.has(el)) waitForStable(el, injectButton);
-    });
-
-    // Response blocks
+    // Response blocks only: the button should appear after the final reply.
     var responseEls = findResponseElements();
     responseEls.forEach(function(el) {
       if (!processed.has(el)) waitForStable(el, injectButton);

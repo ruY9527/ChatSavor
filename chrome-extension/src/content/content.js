@@ -6,7 +6,7 @@
     { name: 'chatgpt',    host: 'chat.openai.com',    selectors: ['[data-message-author-role="assistant"]'] },
     { name: 'chatgpt',    host: 'chatgpt.com',        selectors: ['[data-message-author-role="assistant"]'] },
     { name: 'claude',     host: 'claude.ai',           selectors: ['.font-claude-message', '[class*="assistant"]'] },
-    { name: 'deepseek',   host: 'chat.deepseek.com',   selectors: ['.ds-markdown--block'] },
+    { name: 'deepseek',   host: 'deepseek.com',        selectors: ['.ds-markdown--block', '.ds-markdown', '.markdown-body'] },
     { name: 'doubao',     host: 'doubao.com',           selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
     { name: 'chatglm',    host: 'chatglm.cn',           selectors: ['.markdown-body', '[class*="answer"]'] },
     { name: 'tongyi',     host: 'tongyi.aliyun.com',    selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
@@ -81,6 +81,10 @@
   function getSelectors() {
     var config = getCurrentPlatformConfig();
     return config ? config.selectors : GENERIC_SELECTORS;
+  }
+
+  function isDeepSeekHost() {
+    return location.hostname === 'deepseek.com' || location.hostname.slice(-13) === '.deepseek.com';
   }
 
   // ══════════════════════════════════════════════════════════
@@ -507,6 +511,11 @@
   // ══════════════════════════════════════════════════════════
 
   function init() {
+    if (isDeepSeekHost()) {
+      console.log('[AI Saver] Skipping generic scanner on DeepSeek');
+      return;
+    }
+
     console.log('[AI Saver] Starting on', location.hostname);
 
     // Initial scans for page-load content
