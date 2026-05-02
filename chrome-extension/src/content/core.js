@@ -41,14 +41,15 @@ window.ChatSavorCore = (function() {
   // ── Convert container DOM to Markdown ──
   function extractMarkdown(container) {
     var clone = container.cloneNode(true);
-    clone.querySelectorAll('.ai-saver-host, .ai-saver-modal-host, button, .ai-saver-btn').forEach(function(n) { n.remove(); });
+    clone.querySelectorAll('.ai-saver-host, .ai-saver-modal-host, button, [role="button"], input, textarea, select, .ai-saver-btn').forEach(function(n) { n.remove(); });
     clone.querySelectorAll('svg').forEach(function(svg) {
       if (svg.parentElement && svg.parentElement.children.length === 1) svg.parentElement.remove();
     });
     var html = clone.innerHTML;
-    if (!html || !html.trim()) return null;
+    var text = (clone.textContent || '').trim();
+    if ((!html || !html.trim()) && !text) return null;
     var td = getTurndown();
-    var markdown = td ? td.turndown(clone) : (clone.textContent || '').trim();
+    var markdown = (html && html.trim() && td) ? td.turndown(clone) : text;
     return { html: html, markdown: markdown };
   }
 
@@ -72,7 +73,7 @@ window.ChatSavorCore = (function() {
 
     var btn = document.createElement('button');
     btn.className = 'save-btn';
-    btn.textContent = '📥 Save';
+    btn.textContent = '🔄 转换';
     btn.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); onClick(); });
 
     shadow.appendChild(style);
@@ -242,21 +243,16 @@ window.ChatSavorCore = (function() {
   }
 
   function downloadPdf(markdown) {
-    var m = getMarked();
-    var bodyHtml = m ? m.parse(markdown) : '<pre>' + escapeHtml(markdown) + '</pre>';
-    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>AI Response</title><style>' +
-      'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:40px;max-width:800px;margin:0 auto;line-height:1.7;color:#333}' +
-      'h1{font-size:24px;margin:20px 0 12px;border-bottom:2px solid #eee;padding-bottom:8px}' +
-      'h2{font-size:20px;margin:18px 0 10px}h3{font-size:16px;margin:14px 0 8px}' +
-      'p{margin:8px 0}ul,ol{margin:8px 0;padding-left:24px}' +
-      'pre{background:#f6f8fa;padding:16px;border-radius:6px;overflow-x:auto;font-size:13px;line-height:1.5}' +
-      'code{font-family:"Fira Code",Consolas,monospace;font-size:13px}' +
-      'blockquote{border-left:3px solid #667eea;margin:12px 0;padding:8px 16px;background:#f8f9ff;color:#555}' +
-      'table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ddd;padding:8px 12px;text-align:left}th{background:#f6f8fa;font-weight:600}' +
-      '@media print{body{padding:20px}pre{white-space:pre-wrap;word-break:break-all}}' +
-      '</style></head><body>' + bodyHtml +
-      '<script>window.onload=function(){setTimeout(function(){window.print()},300)}<\/script></body></html>';
-    window.open(URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' })), '_blank');
+    if (window.ChatSavorPdf && typeof window.ChatSavorPdf.downloadMarkdownPdf === 'function') {
+      return window.ChatSavorPdf.downloadMarkdownPdf(markdown, {
+        filename: 'ai-response.pdf',
+        title: 'AI Response'
+      }).catch(function(error) {
+        console.error('[ChatSavor] PDF download failed:', error);
+      });
+    }
+
+    console.warn('[ChatSavor] PDF exporter unavailable');
   }
 
   function downloadDocx(markdown) {

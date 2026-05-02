@@ -14,6 +14,11 @@
   var STABILITY_MS = 1500;
   var cachedResponseSelector = null;
   var RESPONSE_SELECTORS = [
+    '[class*="chat-main-messages"] [class*="message-container"] [class*="message-area"]',
+    '[class*="chat-main-messages"] [class*="message-container"]',
+    '[class*="chat-main-messages"] [class*="message"]',
+    '[class*="message-container"] [class*="message-area"]',
+    '[class*="message-area"]',
     '[data-role="assistant"]',
     '[data-testid*="assistant"]',
     '[class*="assistant-message"]',
@@ -24,6 +29,9 @@
     '[class*="bot"] [class*="message-content"]',
   ];
   var TURN_SELECTORS = [
+    '[class*="chat-main-messages"] [class*="message-container"]',
+    '[class*="chat-main-messages"] [class*="message-area"]',
+    '[class*="chat-main-messages"] [class*="message"]',
     '[data-role="assistant"]',
     '[data-testid*="assistant"]',
     '[class*="assistant-message"]',
@@ -38,7 +46,27 @@
     '停止回复',
     'stop generating',
     'stop response',
-    'stop',
+  ];
+  var ACTION_TOKENS = [
+    '复制',
+    '重新生成',
+    '重试',
+    '点赞',
+    '点踩',
+    '朗读',
+    '分享',
+    '有帮助',
+    '没帮助',
+    'copy',
+    'regenerate',
+    'retry',
+    'like',
+    'dislike',
+    'share',
+  ];
+  var COPY_TOKENS = [
+    '复制',
+    'copy',
   ];
 
   function isVisible(el) {
@@ -46,12 +74,75 @@
   }
 
   function hasInjectedButton(el) {
-    return !!(el && el.nextElementSibling && el.nextElementSibling.classList &&
+    if (!el) return false;
+
+    var actionHost = getResponseActionHost(el);
+    if (actionHost && actionHost.querySelector('.ai-saver-host')) return true;
+
+    var position = getActionInsertPosition(el);
+    if (position && position.parent && position.parent.querySelector) {
+      if (position.parent.querySelector('.ai-saver-host')) return true;
+    }
+
+    return !!(el.nextElementSibling && el.nextElementSibling.classList &&
       el.nextElementSibling.classList.contains('ai-saver-host'));
   }
 
   function hasUsableText(el) {
     return ((el.textContent || '').trim().length >= 15);
+  }
+
+  function hasClassToken(el, token) {
+    return !!(el && el.classList && Array.from(el.classList).some(function(name) {
+      return name.indexOf(token) !== -1;
+    }));
+  }
+
+  function getResponseBodyHost(root) {
+    if (!root) return null;
+
+    var firstChild = root.firstElementChild;
+    if (!firstChild) return null;
+
+    var body = firstChild.firstElementChild;
+    if (body && hasClassToken(body, 'relative') && hasClassToken(body, 'w-full')) return body;
+
+    return null;
+  }
+
+  function getResponseActionHost(root) {
+    if (!root) return null;
+
+    var firstChild = root.firstElementChild;
+    if (!firstChild) return null;
+
+    var children = Array.from(firstChild.children);
+    for (var i = 0; i < children.length; i++) {
+      var child = children[i];
+      if (hasClassToken(child, 'select-none') && hasClassToken(child, 'flex-row')) return child;
+    }
+
+    return null;
+  }
+
+  function findResponseByMessageListDom() {
+    var containers = document.querySelectorAll('[class*="message-list-"] [class*="inter-"] > [class*="container-"]');
+    var results = [];
+
+    for (var i = 0; i < containers.length; i++) {
+      var candidate = containers[i].querySelector('.group');
+      if (!candidate) continue;
+      if (hasClassToken(candidate, 'justify-end')) continue;
+
+      var body = getResponseBodyHost(candidate);
+      var action = getResponseActionHost(candidate);
+      if (!body || !action) continue;
+      if (!hasUsableText(body)) continue;
+
+      results.push(candidate);
+    }
+
+    return deduplicate(results);
   }
 
   function matchesStopToken(value) {
@@ -64,7 +155,10 @@
   }
 
   function hasVisibleStopButton() {
-    var controls = document.querySelectorAll('button, [role="button"]');
+    var chatRoot = getChatRoot();
+    if (!chatRoot) return false;
+
+    var controls = chatRoot.querySelectorAll('button, [role="button"]');
     for (var i = 0; i < controls.length; i++) {
       var control = controls[i];
       if (control.offsetParent === null) continue;
@@ -79,7 +173,174 @@
     return false;
   }
 
+  function matchesActionToken(value) {
+    var normalized = (value || '').trim().toLowerCase();
+    if (!normalized) return false;
+    for (var i = 0; i < ACTION_TOKENS.length; i++) {
+      if (normalized.indexOf(ACTION_TOKENS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function matchesCopyToken(value) {
+    var normalized = (value || '').trim().toLowerCase();
+    if (!normalized) return false;
+    for (var i = 0; i < COPY_TOKENS.length; i++) {
+      if (normalized.indexOf(COPY_TOKENS[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function getMatchingActionControls(root) {
+    if (!root || !root.querySelectorAll) return [];
+
+    var controls = root.querySelectorAll('button, [role="button"]');
+    var matches = [];
+
+    for (var i = 0; i < controls.length; i++) {
+      var control = controls[i];
+      if (control.closest('.ai-saver-host, .ai-saver-modal-host')) continue;
+
+      var text = [
+        control.textContent || '',
+        control.getAttribute('aria-label') || '',
+        control.getAttribute('title') || '',
+        control.getAttribute('data-testid') || ''
+      ].join(' ');
+
+      if (matchesActionToken(text)) matches.push(control);
+    }
+
+    return matches;
+  }
+
+  function getChatRoot(el) {
+    var messageListRoot = document.querySelector('[class*="message-list-"]');
+    if (messageListRoot) return messageListRoot;
+
+    if (el && el.closest) {
+      var ownRoot = el.closest('[class*="chat-main-messages"]');
+      if (ownRoot) return ownRoot;
+    }
+    return document.querySelector('[class*="chat-main-messages"]');
+  }
+
+  function getActionContainer(el) {
+    if (!el || !el.closest) return null;
+    return el.closest('[class*="message-container"]') ||
+      el.closest('[class*="container-wrapper"]') ||
+      el.closest('[class*="message"]') ||
+      el.closest('[class*="chat-main-messages"]');
+  }
+
+  function findCopyControl(actionRow) {
+    if (!actionRow) return null;
+
+    var controls = actionRow.querySelectorAll('button, [role="button"]');
+    for (var i = 0; i < controls.length; i++) {
+      var control = controls[i];
+      if (control.closest('.ai-saver-host, .ai-saver-modal-host')) continue;
+
+      var text = [
+        control.textContent || '',
+        control.getAttribute('aria-label') || '',
+        control.getAttribute('title') || '',
+        control.getAttribute('data-testid') || ''
+      ].join(' ');
+
+      if (matchesCopyToken(text)) return control;
+    }
+
+    return null;
+  }
+
+  function getActionInsertPosition(container) {
+    if (!container) return null;
+
+    var copyControl = findCopyControl(container);
+    if (copyControl && copyControl.parentElement) {
+      return {
+        parent: copyControl.parentElement,
+        anchor: copyControl,
+        mode: 'before-copy'
+      };
+    }
+
+    var controls = getMatchingActionControls(container);
+    if (controls.length > 0) {
+      var lastControl = controls[controls.length - 1];
+      if (lastControl && lastControl.parentElement) {
+        return {
+          parent: lastControl.parentElement,
+          anchor: lastControl,
+          mode: 'after-last-action'
+        };
+      }
+    }
+
+    return null;
+  }
+
+  function getInsertionTarget(container) {
+    var controls = getMatchingActionControls(container);
+    if (controls.length === 0) return null;
+
+    var copyControl = findCopyControl(container);
+    if (copyControl && copyControl.parentElement) {
+      return {
+        parent: copyControl.parentElement,
+        before: copyControl,
+        mode: 'before-copy'
+      };
+    }
+
+    var lastControl = controls[controls.length - 1];
+    if (lastControl && lastControl.parentElement) {
+      return {
+        parent: lastControl.parentElement,
+        before: null,
+        mode: 'append-after-actions'
+      };
+    }
+
+    return null;
+  }
+
+  function hasAssistantActionBar(el) {
+    var container = getActionContainer(el);
+    if (!container) return false;
+    return getMatchingActionControls(container).length > 0;
+  }
+
+  function getWidthRatio(el) {
+    if (!el || !el.parentElement || !el.getBoundingClientRect) return 1;
+    var rect = el.getBoundingClientRect();
+    var parentRect = el.parentElement.getBoundingClientRect ? el.parentElement.getBoundingClientRect() : null;
+    if (!parentRect || !parentRect.width) return 1;
+    return rect.width / parentRect.width;
+  }
+
+  function getNestedMessageContainerCount(el) {
+    if (!el || !el.querySelectorAll) return 0;
+    return el.querySelectorAll('[class*="message-container"]').length;
+  }
+
+  function getNestedMessageAreaCount(el) {
+    if (!el || !el.querySelectorAll) return 0;
+    return el.querySelectorAll('[class*="message-area"]').length;
+  }
+
+  function isOverbroadResponse(el) {
+    return getNestedMessageContainerCount(el) > 1 || getNestedMessageAreaCount(el) > 1;
+  }
+
   function resolveResponseWrapper(el) {
+    var messageArea = el.closest('[class*="message-area"]');
+    if (messageArea && hasUsableText(messageArea)) return messageArea;
+
+    var messageContainer = el.closest('[class*="message-container"]');
+    if (messageContainer && hasUsableText(messageContainer)) return messageContainer;
+
     return el.closest('[data-role="assistant"]') ||
       el.closest('[data-testid*="assistant"]') ||
       el.closest('[class*="assistant-message"]') ||
@@ -100,7 +361,11 @@
     if (signal.indexOf('assistant') !== -1) return true;
     if (signal.indexOf('answer') !== -1) return true;
     if (signal.indexOf('bot') !== -1) return true;
-    return !!el.querySelector('.markdown-body, [class*="message-content"], [class*="answer-content"]');
+    if (hasAssistantActionBar(el)) return true;
+
+    return !!el.querySelector(
+      '.markdown-body, [class*="message-content"], [class*="answer-content"], [class*="message-area"], pre, code, table, blockquote'
+    );
   }
 
   function isLikelyResponse(el) {
@@ -108,6 +373,8 @@
     if (el.closest('form, footer, [class*="composer"], [class*="input-area"]')) return false;
     if (!isLikelyAssistantWrapper(el)) return false;
     if (!hasUsableText(el)) return false;
+    if (isOverbroadResponse(el)) return false;
+    if (getChatRoot(el) && !hasAssistantActionBar(el) && getWidthRatio(el) < 0.72) return false;
     return true;
   }
 
@@ -143,7 +410,29 @@
     return normalizeCandidates(candidates);
   }
 
+  function findResponseByActionBar() {
+    var chatRoot = getChatRoot();
+    if (!chatRoot) return [];
+
+    var controls = getMatchingActionControls(chatRoot);
+    var candidates = [];
+
+    for (var i = 0; i < controls.length; i++) {
+      var control = controls[i];
+      var container = getActionContainer(control);
+      if (!container) continue;
+      candidates.push(container);
+    }
+
+    return normalizeCandidates(candidates);
+  }
+
   function findResponseElements() {
+    var byMessageList = findResponseByMessageListDom();
+    if (byMessageList.length > 0) {
+      return byMessageList;
+    }
+
     if (cachedResponseSelector) {
       var cached = normalizeCandidates(document.querySelectorAll(cachedResponseSelector));
       if (cached.length > 0) return cached;
@@ -161,6 +450,12 @@
       } catch (e) {}
     }
 
+    var byActionBar = findResponseByActionBar();
+    if (byActionBar.length > 0) {
+      console.log('[ChatSavor] Doubao action-bar fallback:', byActionBar.length, 'blocks');
+      return byActionBar;
+    }
+
     return findResponseByStructure();
   }
 
@@ -170,7 +465,8 @@
       return;
     }
 
-    var lastLen = (el.textContent || '').trim().length;
+    var stableTarget = getResponseBodyHost(el) || el;
+    var lastLen = (stableTarget.textContent || '').trim().length;
     if (lastLen === 0) return;
 
     setTimeout(function check() {
@@ -184,7 +480,8 @@
         return;
       }
 
-      var newLen = (el.textContent || '').trim().length;
+      stableTarget = getResponseBodyHost(el) || el;
+      var newLen = (stableTarget.textContent || '').trim().length;
       if (newLen === 0) return;
 
       if (newLen === lastLen) {
@@ -202,8 +499,63 @@
   }
 
   function injectButton(el) {
-    if (!el || !el.parentElement) return false;
+    if (!el) return false;
     if (hasInjectedButton(el)) return true;
+
+    var bodyHost = getResponseBodyHost(el);
+    var actionHost = getResponseActionHost(el);
+    if (bodyHost && actionHost) {
+      var btnHost = core.createSaveButton(function() {
+        var result = core.extractMarkdown(bodyHost);
+        if (result && result.markdown) core.showPreviewModal(result.markdown);
+      });
+
+      btnHost.style.display = 'inline-flex';
+      btnHost.style.justifyContent = 'flex-start';
+      btnHost.style.padding = '0';
+      btnHost.style.marginTop = '0';
+      btnHost.style.marginLeft = 'auto';
+      btnHost.style.marginRight = '0';
+      btnHost.style.flexShrink = '0';
+      btnHost.style.opacity = '1';
+      btnHost.style.pointerEvents = 'auto';
+
+      actionHost.appendChild(btnHost);
+      return true;
+    }
+
+    var insertPosition = getActionInsertPosition(el);
+    if (insertPosition) {
+      if (insertPosition.parent.querySelector('.ai-saver-host')) return true;
+
+      var btnHost = core.createSaveButton(function() {
+        var result = core.extractMarkdown(el);
+        if (result && result.markdown) core.showPreviewModal(result.markdown);
+      });
+
+      btnHost.style.display = 'inline-flex';
+      btnHost.style.justifyContent = 'flex-start';
+      btnHost.style.padding = '0';
+      btnHost.style.marginTop = '0';
+      btnHost.style.flexShrink = '0';
+
+      if (insertPosition.mode === 'before-copy') {
+        btnHost.style.marginLeft = '8px';
+        btnHost.style.marginRight = '8px';
+        insertPosition.parent.insertBefore(btnHost, insertPosition.anchor);
+      } else {
+        btnHost.style.marginLeft = 'auto';
+        btnHost.style.marginRight = '0';
+        if (insertPosition.anchor.parentElement === insertPosition.parent && insertPosition.anchor.nextSibling) {
+          insertPosition.parent.insertBefore(btnHost, insertPosition.anchor.nextSibling);
+        } else {
+          insertPosition.parent.appendChild(btnHost);
+        }
+      }
+      return true;
+    }
+
+    if (!el.parentElement) return false;
     return core.injectButtonAfter(el, function() {
       var result = core.extractMarkdown(el);
       if (result && result.markdown) core.showPreviewModal(result.markdown);

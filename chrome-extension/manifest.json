@@ -12,6 +12,7 @@
     "*://*.deepseek.com/*",
     "*://*.google.com/*",
     "*://*.baidu.com/*",
+    "*://doubao.com/*",
     "*://*.doubao.com/*",
     "*://chatglm.cn/*",
     "*://*.tongyi.aliyun.com/*",
@@ -50,6 +51,7 @@
         "*://*.deepseek.com/*",
         "*://*.google.com/*",
         "*://*.baidu.com/*",
+        "*://doubao.com/*",
         "*://*.doubao.com/*",
         "*://chatglm.cn/*",
         "*://*.tongyi.aliyun.com/*",
@@ -68,6 +70,7 @@
         "*://perplexity.ai/*"
       ],
       "js": [
+        "src/lib/pdf.js",
         "src/lib/turndown.js",
         "src/lib/marked.js",
         "src/content/core.js",
