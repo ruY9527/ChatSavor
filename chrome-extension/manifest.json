@@ -1,0 +1,70 @@
+{
+  "manifest_version": 3,
+  "name": "ChatSavor",
+  "version": "2.0.0",
+  "description": "Extract and save AI responses as Markdown, PDF, or Word with real-time preview",
+  "permissions": ["activeTab"],
+  "host_permissions": [
+    "*://chat.openai.com/*",
+    "*://chatgpt.com/*",
+    "*://claude.ai/*",
+    "*://chat.deepseek.com/*",
+    "*://*.google.com/*",
+    "*://*.baidu.com/*",
+    "*://*.doubao.com/*",
+    "*://chatglm.cn/*",
+    "*://*.tongyi.aliyun.com/*",
+    "*://qwen.ai/*",
+    "*://kimi.moonshot.cn/*",
+    "*://xfyun.cn/*",
+    "*://tiangong.cn/*",
+    "*://ai.360.cn/*",
+    "*://poe.com/*",
+    "*://coze.cn/*",
+    "*://coze.com/*",
+    "*://perplexity.ai/*"
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://chat.openai.com/*",
+        "*://chatgpt.com/*",
+        "*://claude.ai/*",
+        "*://chat.deepseek.com/*",
+        "*://*.google.com/*",
+        "*://*.baidu.com/*",
+        "*://*.doubao.com/*",
+        "*://chatglm.cn/*",
+        "*://*.tongyi.aliyun.com/*",
+        "*://qwen.ai/*",
+        "*://kimi.moonshot.cn/*",
+        "*://xfyun.cn/*",
+        "*://tiangong.cn/*",
+        "*://ai.360.cn/*",
+        "*://poe.com/*",
+        "*://coze.cn/*",
+        "*://coze.com/*",
+        "*://perplexity.ai/*"
+      ],
+      "js": ["src/lib/turndown.js", "src/lib/marked.js", "src/content/core.js", "src/content/content.js", "src/content/platforms/deepseek.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  }
+}

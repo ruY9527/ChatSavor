@@ -1,0 +1,35 @@
+# Chrome extension
+chrome-extension/node_modules/
+chrome-extension/dist/
+chrome-extension/build/
+*.crx
+*.pem
+*.zip
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Test
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+.cache/
