@@ -17,6 +17,10 @@
     "*://*.tongyi.aliyun.com/*",
     "*://qwen.ai/*",
     "*://kimi.moonshot.cn/*",
+    "*://grok.com/*",
+    "*://*.grok.com/*",
+    "*://x.com/*",
+    "*://*.x.com/*",
     "*://xfyun.cn/*",
     "*://tiangong.cn/*",
     "*://ai.360.cn/*",
@@ -51,6 +55,10 @@
         "*://*.tongyi.aliyun.com/*",
         "*://qwen.ai/*",
         "*://kimi.moonshot.cn/*",
+        "*://grok.com/*",
+        "*://*.grok.com/*",
+        "*://x.com/*",
+        "*://*.x.com/*",
         "*://xfyun.cn/*",
         "*://tiangong.cn/*",
         "*://ai.360.cn/*",
@@ -59,7 +67,17 @@
         "*://coze.com/*",
         "*://perplexity.ai/*"
       ],
-      "js": ["src/lib/turndown.js", "src/lib/marked.js", "src/content/core.js", "src/content/content.js", "src/content/platforms/deepseek.js"],
+      "js": [
+        "src/lib/turndown.js",
+        "src/lib/marked.js",
+        "src/content/core.js",
+        "src/content/content.js",
+        "src/content/platforms/chatgpt.js",
+        "src/content/platforms/gemini.js",
+        "src/content/platforms/doubao.js",
+        "src/content/platforms/grok.js",
+        "src/content/platforms/deepseek.js"
+      ],
       "css": ["src/content/content.css"],
       "run_at": "document_idle"
     }

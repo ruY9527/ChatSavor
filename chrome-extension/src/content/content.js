@@ -3,11 +3,7 @@
 
   // ── Platform selectors ──
   var PLATFORM_CONFIGS = [
-    { name: 'chatgpt',    host: 'chat.openai.com',    selectors: ['[data-message-author-role="assistant"]'] },
-    { name: 'chatgpt',    host: 'chatgpt.com',        selectors: ['[data-message-author-role="assistant"]'] },
     { name: 'claude',     host: 'claude.ai',           selectors: ['.font-claude-message', '[class*="assistant"]'] },
-    { name: 'deepseek',   host: 'deepseek.com',        selectors: ['.ds-markdown--block', '.ds-markdown', '.markdown-body'] },
-    { name: 'doubao',     host: 'doubao.com',           selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
     { name: 'chatglm',    host: 'chatglm.cn',           selectors: ['.markdown-body', '[class*="answer"]'] },
     { name: 'tongyi',     host: 'tongyi.aliyun.com',    selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
     { name: 'qwen',       host: 'qwen.ai',              selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
@@ -83,8 +79,15 @@
     return config ? config.selectors : GENERIC_SELECTORS;
   }
 
-  function isDeepSeekHost() {
-    return location.hostname === 'deepseek.com' || location.hostname.slice(-13) === '.deepseek.com';
+  function getDedicatedPlatformModule() {
+    var host = location.hostname;
+    if (host === 'chat.openai.com' || host === 'chatgpt.com') return 'chatgpt';
+    if (host === 'gemini.google.com') return 'gemini';
+    if (host === 'deepseek.com' || host.slice(-13) === '.deepseek.com') return 'deepseek';
+    if (host === 'doubao.com' || host.slice(-11) === '.doubao.com') return 'doubao';
+    if (host === 'grok.com' || host.slice(-9) === '.grok.com') return 'grok';
+    if (host === 'x.com' || host.slice(-6) === '.x.com') return 'grok';
+    return null;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -511,8 +514,9 @@
   // ══════════════════════════════════════════════════════════
 
   function init() {
-    if (isDeepSeekHost()) {
-      console.log('[AI Saver] Skipping generic scanner on DeepSeek');
+    var dedicatedModule = getDedicatedPlatformModule();
+    if (dedicatedModule) {
+      console.log('[AI Saver] Skipping generic scanner on', dedicatedModule);
       return;
     }
 
