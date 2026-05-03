@@ -8,6 +8,7 @@
     { name: 'tongyi',     host: 'tongyi.aliyun.com',    selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
     { name: 'qwen',       host: 'qwen.ai',              selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
     { name: 'kimi',       host: 'kimi.moonshot.cn',      selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
+    { name: 'yuanbao',    host: 'yuanbao.tencent.com',   selectors: ['.agent-chat__conv--ai .agent-chat__bubble__content', '[class*="conv--ai"] [class*="bubble__content"]'] },
     { name: 'perplexity', host: 'perplexity.ai',         selectors: ['[class*="answer"]', '[class*="response"]'] },
     { name: 'poe',        host: 'poe.com',               selectors: ['[class*="AssistantMessage"]', '[class*="BotMessage"]'] },
     { name: 'coze',       host: 'coze.cn',               selectors: ['[class*="assistant"]', '[class*="message-content"]'] },
@@ -52,9 +53,74 @@
           return '\n\n```' + lang + '\n' + text + '\n```\n\n';
         }
       });
+      turndownService.addRule('table', {
+        filter: 'table',
+        replacement: function(content, node) {
+          var markdown = tableToMarkdown(node);
+          return markdown ? '\n\n' + markdown + '\n\n' : '\n\n' + node.outerHTML + '\n\n';
+        }
+      });
       return turndownService;
     }
     return null;
+  }
+
+  function tableToMarkdown(table) {
+    if (!table || !table.querySelectorAll) return '';
+
+    var rows = Array.from(table.querySelectorAll('tr')).map(function(row) {
+      return Array.from(row.children).filter(function(cell) {
+        return cell.nodeName === 'TH' || cell.nodeName === 'TD';
+      });
+    }).filter(function(row) {
+      return row.length > 0;
+    });
+
+    if (rows.length === 0) return '';
+    if (table.querySelector('[rowspan], [colspan]')) return '';
+
+    var columnCount = rows.reduce(function(max, row) {
+      return Math.max(max, row.reduce(function(total, cell) {
+        return total + Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
+      }, 0));
+    }, 0);
+
+    if (columnCount === 0) return '';
+
+    var matrix = rows.map(function(row) {
+      var values = [];
+      row.forEach(function(cell) {
+        var colspan = Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
+        values.push(normalizeTableCell(cell));
+        for (var i = 1; i < colspan; i++) values.push('');
+      });
+      while (values.length < columnCount) values.push('');
+      return values.slice(0, columnCount);
+    });
+
+    var firstRowHasTh = rows[0].some(function(cell) { return cell.nodeName === 'TH'; });
+    var header = firstRowHasTh ? matrix[0] : makeDefaultTableHeader(columnCount);
+    var bodyRows = firstRowHasTh ? matrix.slice(1) : matrix;
+
+    return [
+      renderMarkdownTableRow(header),
+      renderMarkdownTableRow(header.map(function() { return '---'; }))
+    ].concat(bodyRows.map(renderMarkdownTableRow)).join('\n');
+  }
+
+  function makeDefaultTableHeader(columnCount) {
+    var header = [];
+    for (var i = 0; i < columnCount; i++) header.push('Column ' + (i + 1));
+    return header;
+  }
+
+  function normalizeTableCell(cell) {
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+  }
+
+  function renderMarkdownTableRow(cells) {
+    return '| ' + cells.join(' | ') + ' |';
   }
 
   // ── Marked ──
@@ -85,6 +151,12 @@
     if (host === 'gemini.google.com') return 'gemini';
     if (host === 'deepseek.com' || host.slice(-13) === '.deepseek.com') return 'deepseek';
     if (host === 'doubao.com' || host.slice(-11) === '.doubao.com') return 'doubao';
+    if (host === 'kimi.com' || host.slice(-9) === '.kimi.com') return 'kimi';
+    if (host === 'kimi.moonshot.cn' || host.slice(-17) === '.kimi.moonshot.cn') return 'kimi';
+    if (host === 'yuanbao.tencent.com' || host.slice(-20) === '.yuanbao.tencent.com') return 'yuanbao';
+    if (host === 'chatglm.cn' || host.slice(-11) === '.chatglm.cn') return 'chatglm';
+    if (host === 'tongyi.aliyun.com' || host.slice(-18) === '.tongyi.aliyun.com') return 'tongyi';
+    if (host === 'qwen.ai' || host.slice(-8) === '.qwen.ai') return 'qwen';
     if (host === 'grok.com' || host.slice(-9) === '.grok.com') return 'grok';
     if (host === 'x.com' || host.slice(-6) === '.x.com') return 'grok';
     return null;
@@ -363,7 +435,7 @@
     var header = document.createElement('div');
     header.className = 'modal-header';
     var title = document.createElement('h2');
-    title.textContent = 'AI Reply Preview';
+    title.textContent = 'AI 回复预览';
     var closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
     closeBtn.textContent = '✕';

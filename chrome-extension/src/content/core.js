@@ -25,9 +25,74 @@ window.ChatSavorCore = (function() {
           return '\n\n```' + lang + '\n' + text + '\n```\n\n';
         }
       });
+      turndownService.addRule('table', {
+        filter: 'table',
+        replacement: function(content, node) {
+          var markdown = tableToMarkdown(node);
+          return markdown ? '\n\n' + markdown + '\n\n' : '\n\n' + node.outerHTML + '\n\n';
+        }
+      });
       return turndownService;
     }
     return null;
+  }
+
+  function tableToMarkdown(table) {
+    if (!table || !table.querySelectorAll) return '';
+
+    var rows = Array.from(table.querySelectorAll('tr')).map(function(row) {
+      return Array.from(row.children).filter(function(cell) {
+        return cell.nodeName === 'TH' || cell.nodeName === 'TD';
+      });
+    }).filter(function(row) {
+      return row.length > 0;
+    });
+
+    if (rows.length === 0) return '';
+    if (table.querySelector('[rowspan], [colspan]')) return '';
+
+    var columnCount = rows.reduce(function(max, row) {
+      return Math.max(max, row.reduce(function(total, cell) {
+        return total + Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
+      }, 0));
+    }, 0);
+
+    if (columnCount === 0) return '';
+
+    var matrix = rows.map(function(row) {
+      var values = [];
+      row.forEach(function(cell) {
+        var colspan = Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
+        values.push(normalizeTableCell(cell));
+        for (var i = 1; i < colspan; i++) values.push('');
+      });
+      while (values.length < columnCount) values.push('');
+      return values.slice(0, columnCount);
+    });
+
+    var firstRowHasTh = rows[0].some(function(cell) { return cell.nodeName === 'TH'; });
+    var header = firstRowHasTh ? matrix[0] : makeDefaultTableHeader(columnCount);
+    var bodyRows = firstRowHasTh ? matrix.slice(1) : matrix;
+
+    return [
+      renderMarkdownTableRow(header),
+      renderMarkdownTableRow(header.map(function() { return '---'; }))
+    ].concat(bodyRows.map(renderMarkdownTableRow)).join('\n');
+  }
+
+  function makeDefaultTableHeader(columnCount) {
+    var header = [];
+    for (var i = 0; i < columnCount; i++) header.push('Column ' + (i + 1));
+    return header;
+  }
+
+  function normalizeTableCell(cell) {
+    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+    return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+  }
+
+  function renderMarkdownTableRow(cells) {
+    return '| ' + cells.join(' | ') + ' |';
   }
 
   // ── Marked (Markdown -> HTML) ──
@@ -153,7 +218,7 @@ window.ChatSavorCore = (function() {
     var header = document.createElement('div');
     header.className = 'modal-header';
     var title = document.createElement('h2');
-    title.textContent = 'AI Reply Preview';
+    title.textContent = 'AI 回复预览';
     var closeBtn = document.createElement('button');
     closeBtn.className = 'close-btn';
     closeBtn.textContent = '✕';

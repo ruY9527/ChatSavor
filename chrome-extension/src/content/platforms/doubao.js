@@ -12,6 +12,7 @@
 
   var processed = new WeakSet();
   var STABILITY_MS = 1500;
+  var MIN_TEXT_LENGTH = 2;
   var cachedResponseSelector = null;
   var RESPONSE_SELECTORS = [
     '[class*="chat-main-messages"] [class*="message-container"] [class*="message-area"]',
@@ -89,7 +90,7 @@
   }
 
   function hasUsableText(el) {
-    return ((el.textContent || '').trim().length >= 15);
+    return ((el.textContent || '').trim().length >= MIN_TEXT_LENGTH);
   }
 
   function hasClassToken(el, token) {
@@ -125,6 +126,26 @@
     return null;
   }
 
+  function hasUserSignalInAncestors(el) {
+    var chatRoot = getChatRoot(el);
+    var node = el;
+
+    while (node && node !== chatRoot && node !== document.body && node.nodeType === 1) {
+      var signal = [
+        node.className || '',
+        node.getAttribute('data-role') || '',
+        node.getAttribute('data-testid') || '',
+        node.getAttribute('aria-label') || ''
+      ].join(' ').toLowerCase();
+
+      if (signal.indexOf('user') !== -1) return true;
+      if (hasClassToken(node, 'justify-end')) return true;
+      node = node.parentElement;
+    }
+
+    return false;
+  }
+
   function findResponseByMessageListDom() {
     var containers = document.querySelectorAll('[class*="message-list-"] [class*="inter-"] > [class*="container-"]');
     var results = [];
@@ -135,8 +156,7 @@
       if (hasClassToken(candidate, 'justify-end')) continue;
 
       var body = getResponseBodyHost(candidate);
-      var action = getResponseActionHost(candidate);
-      if (!body || !action) continue;
+      if (!body) continue;
       if (!hasUsableText(body)) continue;
 
       results.push(candidate);
@@ -312,14 +332,6 @@
     return getMatchingActionControls(container).length > 0;
   }
 
-  function getWidthRatio(el) {
-    if (!el || !el.parentElement || !el.getBoundingClientRect) return 1;
-    var rect = el.getBoundingClientRect();
-    var parentRect = el.parentElement.getBoundingClientRect ? el.parentElement.getBoundingClientRect() : null;
-    if (!parentRect || !parentRect.width) return 1;
-    return rect.width / parentRect.width;
-  }
-
   function getNestedMessageContainerCount(el) {
     if (!el || !el.querySelectorAll) return 0;
     return el.querySelectorAll('[class*="message-container"]').length;
@@ -358,6 +370,7 @@
     ].join(' ').toLowerCase();
 
     if (signal.indexOf('user') !== -1) return false;
+    if (hasUserSignalInAncestors(el)) return false;
     if (signal.indexOf('assistant') !== -1) return true;
     if (signal.indexOf('answer') !== -1) return true;
     if (signal.indexOf('bot') !== -1) return true;
@@ -371,10 +384,10 @@
   function isLikelyResponse(el) {
     if (!el || !isVisible(el)) return false;
     if (el.closest('form, footer, [class*="composer"], [class*="input-area"]')) return false;
+    if (hasUserSignalInAncestors(el)) return false;
     if (!isLikelyAssistantWrapper(el)) return false;
     if (!hasUsableText(el)) return false;
     if (isOverbroadResponse(el)) return false;
-    if (getChatRoot(el) && !hasAssistantActionBar(el) && getWidthRatio(el) < 0.72) return false;
     return true;
   }
 
@@ -428,24 +441,29 @@
   }
 
   function findResponseElements() {
+    var results = [];
     var byMessageList = findResponseByMessageListDom();
-    if (byMessageList.length > 0) {
-      return byMessageList;
-    }
+    if (byMessageList.length > 0) results = results.concat(byMessageList);
 
     if (cachedResponseSelector) {
       var cached = normalizeCandidates(document.querySelectorAll(cachedResponseSelector));
-      if (cached.length > 0) return cached;
-      cachedResponseSelector = null;
+      if (cached.length > 0) {
+        results = results.concat(cached);
+      } else {
+        cachedResponseSelector = null;
+      }
     }
 
     for (var i = 0; i < RESPONSE_SELECTORS.length; i++) {
+      if (RESPONSE_SELECTORS[i] === cachedResponseSelector) continue;
       try {
         var matched = normalizeCandidates(document.querySelectorAll(RESPONSE_SELECTORS[i]));
         if (matched.length > 0) {
-          cachedResponseSelector = RESPONSE_SELECTORS[i];
-          console.log('[ChatSavor] Doubao selector:', RESPONSE_SELECTORS[i], '(' + matched.length + ' blocks)');
-          return matched;
+          if (!cachedResponseSelector) {
+            cachedResponseSelector = RESPONSE_SELECTORS[i];
+            console.log('[ChatSavor] Doubao selector:', RESPONSE_SELECTORS[i], '(' + matched.length + ' blocks)');
+          }
+          results = results.concat(matched);
         }
       } catch (e) {}
     }
@@ -453,10 +471,11 @@
     var byActionBar = findResponseByActionBar();
     if (byActionBar.length > 0) {
       console.log('[ChatSavor] Doubao action-bar fallback:', byActionBar.length, 'blocks');
-      return byActionBar;
+      results = results.concat(byActionBar);
     }
 
-    return findResponseByStructure();
+    results = results.concat(findResponseByStructure());
+    return deduplicate(results);
   }
 
   function waitForStable(el, callback) {

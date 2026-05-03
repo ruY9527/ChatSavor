@@ -46,7 +46,7 @@ ChatSavor/
 ## 功能特性
 
 - 在AI回复旁注入"保存"按钮
-- 支持ChatGPT、Claude、Gemini等多个AI平台
+- 支持 ChatGPT、DeepSeek、Gemini、豆包、Grok 等多个 AI 平台
 - HTML转Markdown（保留代码块、表格等格式）
 - 支持预览和下载为 .md / .html 文件
 
@@ -68,7 +68,7 @@ ChatSavor/
 
 ## 使用方法
 
-1. 安装扩展后，打开AI聊天页面（如 chat.openai.com）
+1. 安装扩展后，打开支持的 AI 聊天页面
 2. AI回复出现后，右侧会显示紫色“转换”按钮
 3. 点击按钮提取内容
 4. 点击浏览器工具栏图标打开预览和下载选项
