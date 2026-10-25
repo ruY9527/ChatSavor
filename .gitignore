@@ -1,7 +1,11 @@
-# Chrome extension
-chrome-extension/node_modules/
-chrome-extension/dist/
-chrome-extension/build/
+# Dependencies and package-manager caches
+node_modules/
+.npm/
+.pnpm-store/
+
+# Generated builds and extension packages
+dist/
+build/
 *.crx
 *.pem
 *.zip
@@ -16,20 +20,30 @@ chrome-extension/build/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Logs
 *.log
 logs/
 
-# Environment
+# Local environment files (keep shareable templates)
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.sample
+!.env.template
 
 # Test
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+blob-report/
 
 # Temporary files
 *.tmp
+*.temp
+*.bak
 .cache/
+.eslintcache
+.stylelintcache

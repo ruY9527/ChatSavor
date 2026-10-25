@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "ChatSavor",
-  "version": "2.0.0",
+  "version": "2.0.6",
   "description": "Extract and save AI responses as Markdown, PDF, or Word with real-time preview",
-  "permissions": ["activeTab"],
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": [
     "*://chat.openai.com/*",
     "*://chatgpt.com/*",
@@ -86,9 +86,13 @@
         "*://perplexity.ai/*"
       ],
       "js": [
+        "src/content/dom.js",
+        "src/content/bridge.js",
         "src/lib/pdf.js",
         "src/lib/turndown.js",
         "src/lib/marked.js",
+        "src/lib/katex.js",
+        "src/content/markdown.js",
         "src/content/core.js",
         "src/content/content.js",
         "src/content/platforms/chatgpt.js",
@@ -103,7 +107,9 @@
         "src/content/platforms/deepseek.js"
       ],
       "css": ["src/content/content.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true,
+      "match_origin_as_fallback": true
     }
   ],
   "icons": {

@@ -7,7 +7,7 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      width: 280px;
+      width: 340px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: #fff;
       color: #333;
@@ -19,18 +19,35 @@
       text-align: center;
     }
     .header h1 { font-size: 16px; font-weight: 600; }
-    .content { padding: 20px 16px; text-align: center; }
+    .content { padding: 16px; }
     .content p { font-size: 13px; color: #6b7280; line-height: 1.6; }
     .content .icon { font-size: 32px; margin-bottom: 8px; }
+    #page-status{font-size:14px;color:#333;font-weight:600;margin-bottom:6px}
+    #page-detail{font-size:12px;word-break:break-word;min-height:36px}
+    .actions{display:grid;gap:8px;margin:14px 0}
+    button{border:0;border-radius:6px;padding:10px;cursor:pointer;background:#6655c9;color:white;font-size:13px}
+    button.secondary{background:#eeeef6;color:#383348}
+    button:disabled{opacity:.5;cursor:wait}
+    .hint{font-size:12px!important;border-top:1px solid #eee;padding-top:12px}
+    #version{font-size:12px;font-weight:400}
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>ChatSavor</h1>
+    <h1>ChatSavor <span id="version"></span></h1>
   </div>
   <div class="content">
-    <div class="icon">📥</div>
-    <p>点击 AI 回复下方的 <strong>转换</strong> 按钮，即可预览并下载内容。</p>
+    <p id="page-status" role="status">正在检查当前网页…</p>
+    <p id="page-detail"></p>
+    <div class="actions">
+      <button id="scan-page">重新连接页面并显示按钮</button>
+      <button id="convert-latest">转换最新回复</button>
+      <button id="convert-selection" class="secondary">转换网页中选中的内容</button>
+      <button id="copy-diagnostics" class="secondary">复制检测结果</button>
+    </div>
+    <p class="hint">“转换”按钮会出现在每条 AI 回复的末尾。若未显示，请点击上方“重新连接页面并显示按钮”。</p>
   </div>
+  <script src="../connection.js"></script>
+  <script src="controller.js"></script>
 </body>
 </html>

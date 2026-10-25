@@ -4,119 +4,10 @@
 window.ChatSavorCore = (function() {
   'use strict';
 
-  var turndownService = null;
-  var markedLib = null;
-
-  // ── Turndown (HTML -> Markdown) ──
-  function getTurndown() {
-    if (turndownService) return turndownService;
-    if (typeof TurndownService === 'function') {
-      turndownService = new TurndownService({
-        headingStyle: 'atx',
-        codeBlockStyle: 'fenced',
-        bulletListMarker: '-',
-      });
-      turndownService.addRule('fencedCodeBlock', {
-        filter: function(node) { return node.nodeName === 'PRE' && node.querySelector('code'); },
-        replacement: function(content, node) {
-          var code = node.querySelector('code');
-          var lang = (code.className.match(/language-(\S+)/) || code.className.match(/lang-(\S+)/) || ['', ''])[1];
-          var text = code.textContent || code.innerText || '';
-          return '\n\n```' + lang + '\n' + text + '\n```\n\n';
-        }
-      });
-      turndownService.addRule('table', {
-        filter: 'table',
-        replacement: function(content, node) {
-          var markdown = tableToMarkdown(node);
-          return markdown ? '\n\n' + markdown + '\n\n' : '\n\n' + node.outerHTML + '\n\n';
-        }
-      });
-      return turndownService;
-    }
-    return null;
-  }
-
-  function tableToMarkdown(table) {
-    if (!table || !table.querySelectorAll) return '';
-
-    var rows = Array.from(table.querySelectorAll('tr')).map(function(row) {
-      return Array.from(row.children).filter(function(cell) {
-        return cell.nodeName === 'TH' || cell.nodeName === 'TD';
-      });
-    }).filter(function(row) {
-      return row.length > 0;
-    });
-
-    if (rows.length === 0) return '';
-    if (table.querySelector('[rowspan], [colspan]')) return '';
-
-    var columnCount = rows.reduce(function(max, row) {
-      return Math.max(max, row.reduce(function(total, cell) {
-        return total + Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
-      }, 0));
-    }, 0);
-
-    if (columnCount === 0) return '';
-
-    var matrix = rows.map(function(row) {
-      var values = [];
-      row.forEach(function(cell) {
-        var colspan = Math.max(parseInt(cell.getAttribute('colspan') || '1', 10) || 1, 1);
-        values.push(normalizeTableCell(cell));
-        for (var i = 1; i < colspan; i++) values.push('');
-      });
-      while (values.length < columnCount) values.push('');
-      return values.slice(0, columnCount);
-    });
-
-    var firstRowHasTh = rows[0].some(function(cell) { return cell.nodeName === 'TH'; });
-    var header = firstRowHasTh ? matrix[0] : makeDefaultTableHeader(columnCount);
-    var bodyRows = firstRowHasTh ? matrix.slice(1) : matrix;
-
-    return [
-      renderMarkdownTableRow(header),
-      renderMarkdownTableRow(header.map(function() { return '---'; }))
-    ].concat(bodyRows.map(renderMarkdownTableRow)).join('\n');
-  }
-
-  function makeDefaultTableHeader(columnCount) {
-    var header = [];
-    for (var i = 0; i < columnCount; i++) header.push('Column ' + (i + 1));
-    return header;
-  }
-
-  function normalizeTableCell(cell) {
-    var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
-    return text.replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\n/g, '<br>');
-  }
-
-  function renderMarkdownTableRow(cells) {
-    return '| ' + cells.join(' | ') + ' |';
-  }
-
-  // ── Marked (Markdown -> HTML) ──
-  function getMarked() {
-    if (markedLib) return markedLib;
-    if (typeof marked !== 'undefined') { markedLib = marked; return markedLib; }
-    if (typeof window.marked !== 'undefined') { markedLib = window.marked; return markedLib; }
-    return null;
-  }
-
-  // ── Convert container DOM to Markdown ──
-  function extractMarkdown(container) {
-    var clone = container.cloneNode(true);
-    clone.querySelectorAll('.ai-saver-host, .ai-saver-modal-host, button, [role="button"], input, textarea, select, .ai-saver-btn').forEach(function(n) { n.remove(); });
-    clone.querySelectorAll('svg').forEach(function(svg) {
-      if (svg.parentElement && svg.parentElement.children.length === 1) svg.parentElement.remove();
-    });
-    var html = clone.innerHTML;
-    var text = (clone.textContent || '').trim();
-    if ((!html || !html.trim()) && !text) return null;
-    var td = getTurndown();
-    var markdown = (html && html.trim() && td) ? td.turndown(clone) : text;
-    return { html: html, markdown: markdown };
-  }
+  // Keep all platforms on the same source-preserving conversion path.
+  function getTurndown() { return window.ChatSavorMarkdown.getTurndown(); }
+  function getMarked() { return window.ChatSavorMarkdown.getMarked(); }
+  function extractMarkdown(container) { return window.ChatSavorMarkdown.extract(container); }
 
   // ── Create save button (Shadow DOM isolated) ──
   function createSaveButton(onClick) {
@@ -206,6 +97,13 @@ window.ChatSavorCore = (function() {
       '.btn-secondary{background:#e5e7eb;color:#374151}',
       '.btn-secondary:hover{background:#d1d5db}',
       '.btn-success{background:#10b981;color:#fff}',
+      '.compatibility,.copy-status{font-size:12px;line-height:1.6;color:#555;padding:8px 20px;margin:0;background:#f8f9ff}',
+      '.copy-status:empty{display:none}',
+      '.chatsavor-math{max-width:100%}',
+      'div.chatsavor-math{margin:12px 0;padding:8px 0;text-align:center;overflow-x:auto;overflow-y:hidden}',
+      '.math-error{color:#b45309;white-space:pre-wrap;font-family:Consolas,monospace}',
+      '.formula-item{border-bottom:1px solid #e5e7eb;padding:12px 0}',
+      '.formula-item pre{white-space:pre-wrap;word-break:break-word;background:#f6f8fa;padding:10px;margin:8px 0;font-size:13px}',
     ].join('\n');
     shadow.appendChild(style);
 
@@ -230,12 +128,17 @@ window.ChatSavorCore = (function() {
     tabs.className = 'tabs';
     var tabPreview = document.createElement('button');
     tabPreview.className = 'tab active';
-    tabPreview.textContent = 'Preview';
+    tabPreview.textContent = '预览';
     var tabMarkdown = document.createElement('button');
     tabMarkdown.className = 'tab';
     tabMarkdown.textContent = 'Markdown';
     tabs.appendChild(tabPreview);
     tabs.appendChild(tabMarkdown);
+    var formulas = window.ChatSavorMarkdown.getFormulas(markdown);
+    var tabFormulas = document.createElement('button');
+    tabFormulas.className = 'tab';
+    tabFormulas.textContent = '公式 (' + formulas.length + ')';
+    if (formulas.length) tabs.appendChild(tabFormulas);
 
     // Body
     var body = document.createElement('div');
@@ -243,8 +146,7 @@ window.ChatSavorCore = (function() {
 
     var previewDiv = document.createElement('div');
     previewDiv.className = 'preview';
-    var m = getMarked();
-    previewDiv.innerHTML = m ? m.parse(markdown) : escapeHtml(markdown).replace(/\n/g, '<br>');
+    previewDiv.innerHTML = window.ChatSavorMarkdown.render(markdown);
 
     var mdDiv = document.createElement('pre');
     mdDiv.className = 'raw-md';
@@ -253,15 +155,59 @@ window.ChatSavorCore = (function() {
 
     body.appendChild(previewDiv);
     body.appendChild(mdDiv);
+    var formulaDiv = document.createElement('div');
+    formulaDiv.className = 'formula-list';
+    formulaDiv.style.display = 'none';
+    var copyStatus = document.createElement('p');
+    copyStatus.className = 'copy-status';
+    copyStatus.setAttribute('role', 'status');
+
+    function copyWithFeedback(button, action) {
+      var label = button.textContent;
+      action().then(function(rich) {
+        button.textContent = '✅ 已复制';
+        copyStatus.textContent = rich === false && button === btnRich ? '当前浏览器未能复制富文本，已改为复制 Markdown。' : '';
+        setTimeout(function() { button.textContent = label; }, 1500);
+      }).catch(function() {
+        copyStatus.textContent = '复制失败，请在 Markdown 或公式页选中内容后手动复制。';
+      });
+    }
+
+    formulas.forEach(function(formula, index) {
+      var item = document.createElement('div');
+      item.className = 'formula-item';
+      var label = document.createElement('strong');
+      label.textContent = (formula.display ? '独立公式 ' : '行内公式 ') + (index + 1);
+      var source = document.createElement('pre');
+      source.textContent = formula.latex;
+      var copyFormula = makeBtn('复制 LaTeX', 'btn btn-secondary', function() {
+        copyWithFeedback(copyFormula, function() { return window.ChatSavorMarkdown.copyText(formula.latex); });
+      });
+      item.appendChild(label); item.appendChild(source); item.appendChild(copyFormula);
+      formulaDiv.appendChild(item);
+    });
+    body.appendChild(formulaDiv);
+
+    function selectTab(activeTab, activeView) {
+      [tabPreview, tabMarkdown, tabFormulas].forEach(function(tab) { tab.classList.toggle('active', tab === activeTab); });
+      [previewDiv, mdDiv, formulaDiv].forEach(function(view) { view.style.display = view === activeView ? '' : 'none'; });
+    }
 
     tabPreview.addEventListener('click', function() {
-      tabPreview.classList.add('active'); tabMarkdown.classList.remove('active');
-      previewDiv.style.display = ''; mdDiv.style.display = 'none';
+      selectTab(tabPreview, previewDiv);
     });
     tabMarkdown.addEventListener('click', function() {
-      tabMarkdown.classList.add('active'); tabPreview.classList.remove('active');
-      previewDiv.style.display = 'none'; mdDiv.style.display = '';
+      selectTab(tabMarkdown, mdDiv);
     });
+    tabFormulas.addEventListener('click', function() { selectTab(tabFormulas, formulaDiv); });
+
+    var compatibility = document.createElement('p');
+    compatibility.className = 'compatibility';
+    compatibility.textContent = 'Obsidian：复制 Markdown。Notion：可尝试富文本粘贴或导入 .md；未识别的公式请用 Ctrl/Cmd+Shift+E 或 /math，再粘贴“公式”页的 LaTeX。';
+    var errors = previewDiv.querySelectorAll('.math-error').length;
+    if (errors) compatibility.textContent += ' 有 ' + errors + ' 个公式无法预览，已保留原始 LaTeX。';
+    var unconverted = previewDiv.querySelector('[data-chatsavor-unconverted-math]');
+    if (unconverted) compatibility.textContent += ' 部分公式缺少 LaTeX 源码，已保留原始内容，请检查目标应用中的显示。';
 
     // Footer
     var footer = document.createElement('div');
@@ -269,15 +215,17 @@ window.ChatSavorCore = (function() {
     var btnMd = makeBtn('.md', 'btn btn-primary', function() { downloadBlob(markdown, 'ai-response.md', 'text/markdown'); });
     var btnPdf = makeBtn('.pdf', 'btn btn-primary', function() { downloadPdf(markdown); });
     var btnDocx = makeBtn('.docx', 'btn btn-primary', function() { downloadDocx(markdown); });
-    var btnCopy = makeBtn('Copy', 'btn btn-secondary', function() {
-      navigator.clipboard.writeText(markdown).then(function() {
-        btnCopy.textContent = '✅ Copied'; btnCopy.className = 'btn btn-success';
-        setTimeout(function() { btnCopy.textContent = 'Copy'; btnCopy.className = 'btn btn-secondary'; }, 1500);
-      });
+    var btnCopy = makeBtn('复制 Markdown', 'btn btn-secondary', function() {
+      copyWithFeedback(btnCopy, function() { return window.ChatSavorMarkdown.copy(markdown, false); });
     });
-    footer.appendChild(btnMd); footer.appendChild(btnPdf); footer.appendChild(btnDocx); footer.appendChild(btnCopy);
+    var btnRich = makeBtn('复制富文本', 'btn btn-secondary', function() {
+      copyWithFeedback(btnRich, function() { return window.ChatSavorMarkdown.copy(markdown, true); });
+    });
+    footer.appendChild(btnMd); footer.appendChild(btnPdf); footer.appendChild(btnDocx); footer.appendChild(btnCopy); footer.appendChild(btnRich);
 
-    modal.appendChild(header); modal.appendChild(tabs); modal.appendChild(body); modal.appendChild(footer);
+    modal.appendChild(header); modal.appendChild(tabs);
+    if (formulas.length || unconverted) modal.appendChild(compatibility);
+    modal.appendChild(body); modal.appendChild(copyStatus); modal.appendChild(footer);
     overlay.appendChild(modal); shadow.appendChild(overlay);
 
     var closeModal = function() { host.remove(); document.removeEventListener('keydown', escHandler); };
