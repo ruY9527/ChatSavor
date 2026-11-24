@@ -127,7 +127,7 @@ test('healthy tabs are not reinjected on an unrelated browser update event', asy
   assert.equal(worker.calls.injections.length, 0);
 });
 
-test('background recovery ignores pages outside the two ChatGPT domains', async () => {
+test('background recovery ignores unsupported pages and restores all supported domains', async () => {
   const worker = serviceWorker();
   assert.equal(worker.listeners.updated.length, 1);
   worker.listeners.updated[0](11, { status: 'complete' }, { url: 'https://example.com/' });
@@ -135,6 +135,13 @@ test('background recovery ignores pages outside the two ChatGPT domains', async 
   await flush();
   assert.equal(worker.calls.injections.length, 0);
   assert.equal(worker.calls.commands.length, 0);
+  const supported = ['https://chatgpt.com/c/x', 'https://chat.openai.com/c/x', 'https://chat.deepseek.com/a', 'https://gemini.google.com/app'];
+  for (let i = 0; i < supported.length; i++) {
+    const before = worker.calls.commands.length;
+    worker.listeners.updated[0](20 + i, { status: 'complete' }, { url: supported[i] });
+    await flush();
+    assert.ok(worker.calls.commands.length > before, `${supported[i]} should trigger a connection attempt`);
+  }
 });
 
 test('actual manifest scripts restore per-reply buttons after an extension reload with stale globals', async t => {

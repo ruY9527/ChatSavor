@@ -15,7 +15,7 @@
   function displayStatus(status) {
     lastStatus = status;
     if (!status.coreReady || !status.markdownReady) statusText.textContent = '转换脚本加载不完整';
-    else if (!status.adapter && (status.host === 'chatgpt.com' || status.host === 'chat.openai.com')) statusText.textContent = '网页已连接，但回复识别模块未加载';
+    else if (!status.adapter) statusText.textContent = '网页已连接，但回复识别模块未加载';
     else if (!status.responseCount) statusText.textContent = '网页已连接，暂未识别到回复';
     else statusText.textContent = '已识别 ' + status.responseCount + ' 条回复，' + status.buttonCount + ' 个回复转换按钮';
     detailText.textContent = status.host + ' · 页面脚本 ' + status.version;
@@ -36,7 +36,7 @@
   }
 
   async function command(value, reconnect) {
-    if (!tab || !/^https?:\/\//.test(tab.url || '')) throw new Error('请先切换到 ChatGPT 对话网页，再打开扩展。');
+    if (!tab || !/^https?:\/\//.test(tab.url || '')) throw new Error('请先切换到支持的 AI 对话网页（如 ChatGPT、DeepSeek、Gemini 等），再打开扩展。');
     var response = await connection.connect(tab.id, { command: value, force: reconnect === true });
     lastFrames = response.frames || [];
     if (response.status) lastStatus = response.status;
@@ -49,6 +49,13 @@
   document.getElementById('scan-page').addEventListener('click', function() { run(function() { return command('SCAN', true); }); });
   document.getElementById('convert-latest').addEventListener('click', function() { run(function() { return command('LATEST'); }); });
   document.getElementById('convert-selection').addEventListener('click', function() { run(function() { return command('SELECTION'); }); });
+  document.getElementById('export-all').addEventListener('click', function() { run(function() { return command('EXPORT_ALL'); }); });
+  document.getElementById('multi-select').addEventListener('click', function() {
+    run(async function() {
+      await command('TOGGLE_SELECT_MODE');
+      window.close();
+    });
+  });
   document.getElementById('copy-diagnostics').addEventListener('click', function() {
     run(async function() {
       try { await command('STATUS'); } catch (error) { lastError = cleanError(error); }

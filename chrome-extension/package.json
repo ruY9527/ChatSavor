@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "test": "node --test",
-    "vendor:math": "node scripts/vendor-math.cjs"
+    "vendor:math": "node scripts/vendor-math.cjs",
+    "sync:version": "node scripts/sync-version.cjs",
+    "check:version": "node scripts/sync-version.cjs --check"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

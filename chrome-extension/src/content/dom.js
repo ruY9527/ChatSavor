@@ -1,14 +1,24 @@
 // Traverse rendered document boundaries without reading cross-origin frame contents.
 window.ChatSavorDOM = (function() {
   'use strict';
-  var OWN_UI = '.ai-saver-host, .ai-saver-modal-host, .ai-saver-launcher-host';
+  var OWN_UI = '.ai-saver-host, .ai-saver-modal-host, .ai-saver-launcher-host, .ai-saver-select-host, .ai-saver-select-mark';
   var cachedRoots = null;
+
+  function canHostShadow(element) {
+    var tag = element.tagName || '';
+    return tag.indexOf('-') !== -1 || tag === 'DIV' || tag === 'SECTION' || tag === 'ARTICLE' || tag === 'MAIN';
+  }
 
   function shadowRoot(element) {
     if (element.namespaceURI && element.namespaceURI !== 'http://www.w3.org/1999/xhtml') return null;
     if (element.matches && element.matches(OWN_UI)) return null;
+    // Reading .shadowRoot is a cheap JS property; only cross the native boundary
+    // for elements that can actually host a shadow root.
+    var open = element.shadowRoot;
+    if (open) return open;
+    if (!canHostShadow(element)) return null;
     try {
-      return element.shadowRoot || (typeof chrome !== 'undefined' && chrome.dom && chrome.dom.openOrClosedShadowRoot ? chrome.dom.openOrClosedShadowRoot(element) : null);
+      return typeof chrome !== 'undefined' && chrome.dom && chrome.dom.openOrClosedShadowRoot ? chrome.dom.openOrClosedShadowRoot(element) : null;
     } catch (ignored) { return null; }
   }
 
@@ -47,14 +57,33 @@ window.ChatSavorDOM = (function() {
     function visit(root) {
       if (!root || seen.has(root)) return;
       seen.add(root); result.push(root);
-      var elements = root.querySelectorAll('*');
-      for (var i = 0; i < elements.length; i++) {
-        var element = elements[i];
-        if (closest(element, OWN_UI)) continue;
-        var shadow = shadowRoot(element);
-        if (shadow) visit(shadow);
-        if (element.tagName === 'IFRAME') {
-          try { if (element.contentDocument) visit(element.contentDocument); } catch (ignored) {}
+      var walkerFilter = {
+        acceptNode: function(element) {
+          // FILTER_REJECT prunes the whole UI subtree: no per-descendant closest() walk.
+          if (element.matches && element.matches(OWN_UI)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      };
+      var walker = root.createTreeWalker ? root.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, walkerFilter) : null;
+      if (walker) {
+        var element = walker.currentNode;
+        while ((element = walker.nextNode())) {
+          var shadow = shadowRoot(element);
+          if (shadow) visit(shadow);
+          if (element.tagName === 'IFRAME') {
+            try { if (element.contentDocument) visit(element.contentDocument); } catch (ignored) {}
+          }
+        }
+      } else {
+        var elements = root.querySelectorAll('*');
+        for (var i = 0; i < elements.length; i++) {
+          var node = elements[i];
+          if (closest(node, OWN_UI)) continue;
+          var fallbackShadow = shadowRoot(node);
+          if (fallbackShadow) visit(fallbackShadow);
+          if (node.tagName === 'IFRAME') {
+            try { if (node.contentDocument) visit(node.contentDocument); } catch (ignored) {}
+          }
         }
       }
       if (root.nodeType === 1) {

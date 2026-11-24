@@ -9,7 +9,7 @@ ChatSavor/
 ├── README.md                 # 项目说明文档
 ├── .gitignore              # Git忽略配置
 ├── plan/                    # 产品规划与需求文档
-│   └── AI回复内容提取.md    # AI回复提取功能需求文档
+│   └── ChatSavor重构与功能扩展计划.md # 重构与功能扩展执行规范
 └── chrome-extension/        # Chrome扩展主目录
     ├── manifest.json        # 扩展配置文件（MV3）
     ├── .gitignore           # 扩展级Git忽略配置
@@ -21,15 +21,23 @@ ChatSavor/
     │   └── icon128.png     # 应用图标(128x128)
     └── src/                 # 源代码目录
         ├── background.js    # Service Worker（后台脚本）
+        ├── connection.js    # 多 Frame 探测与连接逻辑
         ├── content/         # Content Scripts（内容脚本）
-        │   ├── content.js  # 注入保存按钮逻辑
-        │   └── content.css # 按钮样式
+        │   ├── dom.js       # 跨 Shadow DOM / iframe 的 DOM 工具
+        │   ├── bridge.js    # 页面内命令桥（STATUS/SCAN/LATEST…）
+        │   ├── markdown.js  # Markdown 渲染、公式与净化引擎
+        │   ├── core.js      # 按钮注入、预览弹窗与导出
+        │   ├── platform-base.js # 统一平台适配器基类
+        │   ├── content.js   # 通用扫描器（无专用适配器的站点）
+        │   └── platforms/   # 各平台专用适配器（chatgpt/gemini/deepseek/…）
+        │       └── *.js
         ├── lib/            # 第三方库
         │   ├── turndown.js # HTML转Markdown库
-        │   └── marked.js   # Markdown渲染库
+        │   ├── marked.js   # Markdown渲染库
+        │   ├── katex.js    # 公式渲染库
+        │   └── pdf.js      # PDF 导出兜底
         └── popup/          # 扩展弹窗
-            ├── popup.html  # 弹窗界面
-            └── popup.js   # 弹窗交互逻辑
+            └── popup.html  # 弹窗界面与交互逻辑（内联脚本）
 ```
 
 ## 目录说明

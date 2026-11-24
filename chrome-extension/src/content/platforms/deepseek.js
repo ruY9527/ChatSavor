@@ -1,170 +1,55 @@
-// ChatSavor — DeepSeek platform module
-// Thinking: uses .ds-thinking-content
-// Response: tries known selectors, then falls back to structural detection
-
-(function() {
+// ChatSavor — DeepSeek platform module (base adapter)
+(function () {
   'use strict';
-
-  function isDeepSeekHost() {
-    return location.hostname === 'deepseek.com' || location.hostname.slice(-13) === '.deepseek.com';
-  }
-
-  if (!isDeepSeekHost()) return;
-
-  var core = window.ChatSavorCore;
-  if (!core) return;
-
-  console.log('[ChatSavor] DeepSeek module loaded');
-
-  var processed = new WeakSet();
-  var STABILITY_MS = 1500;
-
+  if (!window.ChatSavorPlatform) return;
   var THINKING_SEL = '.ds-thinking-content';
-
-  // Known response selectors (try first for speed)
-  var RESPONSE_SELECTORS = [
-    '.ds-markdown--block',
-    '.ds-markdown',
-    '.markdown-body',
-  ];
-
-  // ── Structural detection ──
-  // Find response blocks by navigating from the thinking container
-  function findResponseByStructure() {
-    var thinkingEls = document.querySelectorAll(THINKING_SEL);
-    if (thinkingEls.length === 0) return [];
-
-    var results = [];
-    var seen = new Set();
-
-    thinkingEls.forEach(function(thinkingEl) {
-      // Strategy 1: thinking container's parent → find sibling content
-      var parent = thinkingEl.parentElement;
-      if (!parent) return;
-
-      Array.from(parent.children).forEach(function(child) {
-        if (child === thinkingEl) return;
-        if (child.classList.contains('ai-saver-host')) return;
-        if (seen.has(child)) return;
-        if (child.closest && child.closest(THINKING_SEL)) return;
-        var txt = (child.textContent || '').trim();
-        if (txt.length < 15) return;
-        seen.add(child);
-        results.push(child);
+  window.ChatSavorPlatform.create({
+    id: 'deepseek',
+    matchHost: function (host) { return host === 'deepseek.com' || host.slice(-13) === '.deepseek.com'; },
+    responseSelectors: ['.ds-markdown--block', '.ds-markdown', '.markdown-body'],
+    userSelector: '[data-role="user"], [data-message-author-role="user"], [class*="user-message"]',
+    minTextLength: 2,
+    isLikelyResponse: function (el) { return !el.closest(THINKING_SEL); },
+    extractThinking: function (el) {
+      var node = el.parentElement ? el.parentElement.querySelector(THINKING_SEL) : null;
+      return node ? (node.textContent || '').trim() : '';
+    },
+    stopTokens: ['停止生成', '停止回答', '停止输出', 'stop generating', 'stop response'],
+    stopSelectors: ['[data-testid="stop-button"]', '[aria-label*="停止生成"]', '[aria-label*="Stop generating"]', '[title*="停止生成"]'],
+    findResponses: function (ctx) {
+      var w = window;
+      var base = ctx.dom || w.ChatSavorDOM;
+      var structural = [];
+      var thinkingEls = (base ? base.queryAll(THINKING_SEL) : Array.from(document.querySelectorAll(THINKING_SEL)));
+      var seen = new Set();
+      thinkingEls.forEach(function (thinkingEl) {
+        var parent = thinkingEl.parentElement;
+        if (!parent) return;
+        function collect(scope) {
+          Array.from(scope.children).forEach(function (child) {
+            if (child === thinkingEl || child === parent || seen.has(child)) return;
+            if (child.classList && child.classList.contains('ai-saver-host')) return;
+            if (child.closest && child.closest(THINKING_SEL)) return;
+            var txt = (base ? base.text(child) : (child.textContent || '')).trim();
+            if (txt.length < 2) return;
+            seen.add(child);
+            structural.push(child);
+          });
+        }
+        collect(parent);
+        if (parent.parentElement) collect(parent.parentElement);
       });
-
-      // Strategy 2: grandparent → find content blocks that aren't thinking
-      var grandparent = parent.parentElement;
-      if (!grandparent) return;
-
-      Array.from(grandparent.children).forEach(function(child) {
-        if (child === parent) return;
-        if (child.classList.contains('ai-saver-host')) return;
-        if (seen.has(child)) return;
-        if (child.closest && child.closest(THINKING_SEL)) return;
-        var txt = (child.textContent || '').trim();
-        if (txt.length < 15) return;
-        seen.add(child);
-        results.push(child);
-      });
-    });
-
-    return results;
-  }
-
-  // ── Main selector discovery ──
-  var cachedResponseSelector = null;
-
-  function findResponseElements() {
-    // Try cached selector first
-    if (cachedResponseSelector) {
-      var cached = document.querySelectorAll(cachedResponseSelector);
-      var filtered = Array.from(cached).filter(function(el) {
-        return !el.closest(THINKING_SEL);
-      });
-      if (filtered.length > 0) return filtered;
-      cachedResponseSelector = null;
-    }
-
-    // Try known selectors
-    for (var i = 0; i < RESPONSE_SELECTORS.length; i++) {
-      try {
-        var els = document.querySelectorAll(RESPONSE_SELECTORS[i]);
-        var filtered = Array.from(els).filter(function(el) {
-          return !el.closest(THINKING_SEL);
+      var selectors = ['.ds-markdown--block', '.ds-markdown', '.markdown-body'];
+      for (var i = 0; i < selectors.length; i++) {
+        var nodes = base ? base.queryAll(selectors[i]) : Array.from(document.querySelectorAll(selectors[i]));
+        var normalized = [];
+        nodes.forEach(function (el) {
+          if (el.closest(THINKING_SEL)) return;
+          if (ctx.isVisible(el) && ctx.getText(el).length >= 2) normalized.push(el);
         });
-        if (filtered.length > 0) {
-          cachedResponseSelector = RESPONSE_SELECTORS[i];
-          console.log('[ChatSavor] Response selector:', RESPONSE_SELECTORS[i], '(' + filtered.length + ' blocks)');
-          return filtered;
-        }
-      } catch(e) {}
-    }
-
-    // Fallback: structural detection
-    var structural = findResponseByStructure();
-    if (structural.length > 0) {
-      console.log('[ChatSavor] Found response blocks via structural detection:', structural.length);
-      return structural;
-    }
-
-    return [];
-  }
-
-  // ── Stability check ──
-  function hasInjectedButton(el) {
-    return !!(el && el.nextElementSibling && el.nextElementSibling.classList && el.nextElementSibling.classList.contains('ai-saver-host'));
-  }
-
-  function waitForStable(el, callback) {
-    if (processed.has(el) || hasInjectedButton(el)) {
-      processed.add(el);
-      return;
-    }
-    var lastLen = (el.textContent || '').trim().length;
-    if (lastLen === 0) return;
-
-    setTimeout(function check() {
-      if (processed.has(el) || hasInjectedButton(el)) {
-        processed.add(el);
-        return;
+        if (normalized.length) return ctx.removeNested(ctx.deduplicate(normalized));
       }
-      var newLen = (el.textContent || '').trim().length;
-      if (newLen === 0) return;
-      if (newLen === lastLen) {
-        var handled = callback(el);
-        if (handled !== false) {
-          processed.add(el);
-        } else {
-          setTimeout(check, STABILITY_MS);
-        }
-      } else {
-        lastLen = newLen;
-        setTimeout(check, STABILITY_MS);
-      }
-    }, STABILITY_MS);
-  }
-
-  // ── Inject button ──
-  function injectButton(el) {
-    if (!el || !el.parentElement) return false;
-    if (hasInjectedButton(el)) return true;
-    return core.injectButtonAfter(el, function() {
-      var result = core.extractMarkdown(el);
-      if (result && result.markdown) core.showPreviewModal(result.markdown);
-    });
-  }
-
-  // ── Scan ──
-  function scan() {
-    // Response blocks only: the button should appear after the final reply.
-    var responseEls = findResponseElements();
-    responseEls.forEach(function(el) {
-      if (!processed.has(el)) waitForStable(el, injectButton);
-    });
-  }
-
-  setTimeout(scan, 1000);
-  setInterval(scan, 2000);
-
+      return ctx.removeNested(ctx.deduplicate(structural.filter(function (el) { return ctx.isVisible(el); })));
+    },
+  });
 })();

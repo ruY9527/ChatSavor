@@ -76,7 +76,7 @@ test('restricted browser pages show a useful message without trying to inject', 
   const page = await popup(t, { url: 'chrome://extensions/' });
   assert.equal(page.calls.injections.length, 0);
   assert.equal(page.calls.commands.length, 0);
-  assert.match(page.document.getElementById('page-detail').textContent, /请先切换到 ChatGPT/);
+  assert.match(page.document.getElementById('page-detail').textContent, /请先切换到.*ChatGPT/);
 });
 
 test('injection failures are displayed instead of being reported as successful connection', async t => {

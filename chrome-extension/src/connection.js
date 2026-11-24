@@ -6,8 +6,8 @@ globalThis.ChatSavorConnection = function(api) {
   function healthy(response) {
     var status = response && response.status;
     if (!response || !response.ok || !status) return false;
-    var chatgpt = status.host === 'chatgpt.com' || status.host === 'chat.openai.com';
-    return status.version === manifest.version && status.coreReady && status.markdownReady && (!chatgpt || status.adapter === 'chatgpt');
+    // All supported pages — including generic — register an adapter now.
+    return status.version === manifest.version && status.coreReady && status.markdownReady && !!status.adapter;
   }
 
   async function execute(tabId, payload) {
@@ -66,7 +66,14 @@ globalThis.ChatSavorConnection = function(api) {
       }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     } });
-    return (result || []).map(function(item) { return { frameId: item.frameId, response: item.result }; });
+    return (result || []).map(function(item) {
+      var response = item.result;
+      if (response && response.error) {
+        // A failing cross-origin child frame must not block scoring of healthy frames.
+        console.warn('[ChatSavor] Frame ' + item.frameId + ' probe error: ' + String(response.error).slice(0, 160));
+      }
+      return { frameId: item.frameId, response: response };
+    });
   }
 
   async function connect(tabId, options) {
@@ -91,7 +98,7 @@ globalThis.ChatSavorConnection = function(api) {
     function score(item) {
       var status = item.response.status;
       return (options.command === 'SELECTION' && status.selectionAvailable ? 1000000 : 0) +
-        (status.responseCount || 0) * 1000 + (status.buttonCount || 0) * 10 + (status.adapter === 'chatgpt' ? 1 : 0);
+        (status.responseCount || 0) * 1000 + (status.buttonCount || 0) * 10 + (status.adapter && status.adapter !== 'generic' ? 1 : 0);
     }
     ready.sort(function(a, b) { return score(b) - score(a) || a.frameId - b.frameId; });
     var selected = ready[0];

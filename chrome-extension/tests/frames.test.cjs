@@ -65,6 +65,30 @@ test('an inaccessible third-party frame does not break the permitted main docume
   assert.equal(response.status.responseCount, 1);
 });
 
+test('child frame probe errors do not block healthy frame selection', async () => {
+  const calls = { files: [], probes: [] };
+  const top = { version: manifest.version, host: 'chatgpt.com', coreReady: true, markdownReady: true, adapter: 'chatgpt', responseCount: 1, buttonCount: 0 };
+  const api = {
+    runtime: { getManifest: () => manifest },
+    scripting: { executeScript: async request => {
+      if (request.files) { calls.files.push(request); return [{ frameId: 0 }]; }
+      calls.probes.push(request.target);
+      return [
+        { frameId: 0, result: { ok: true, status: top } },
+        { frameId: 7, result: { ok: false, error: 'Cannot access contents of frame' } },
+      ];
+    } },
+    tabs: { sendMessage: async () => ({ ok: true, status: top }) },
+  };
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(root, 'src/connection.js'), 'utf8'), context);
+  const client = context.ChatSavorConnection(api);
+  const response = await client.connect(42, { command: 'STATUS' });
+  assert.equal(response.frameId, 0);
+  assert.equal(response.status.responseCount, 1);
+  assert.equal(calls.files.length, 0, 'a failing child frame must not trigger reinjection');
+});
+
 test('manifest injects into matching and related frames without expanding host permissions', () => {
   assert.equal(manifest.content_scripts[0].all_frames, true);
   assert.equal(manifest.content_scripts[0].match_origin_as_fallback, true);

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ChatSavor 打印 / PDF 导出</title>
+  <style>
+    html, body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; color: #1f2937; }
+    #toolbar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+      padding: 10px 18px; background: #f3f4f6; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+    #toolbar button { padding: 7px 14px; border: none; border-radius: 6px; background: #667eea; color: #fff; cursor: pointer; }
+    #toolbar select, #toolbar input[type="text"] { padding: 5px 7px; border: 1px solid #d1d5db; border-radius: 5px; font-size: 12px; }
+    #status { color: #6b7280; }
+    #watermark-layer { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none;
+      user-select: none; z-index: 9999; overflow: hidden; }
+    .print-frame { table-layout: fixed; width: 100%; max-width: 100%; border-collapse: collapse; border: 0; }
+    .print-frame > thead > tr > td,
+    .print-frame > tbody > tr > td,
+    .print-frame > tfoot > tr > td { border: 0; padding: 0; width: 100%; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word; }
+    .page-margin-top, .page-margin-bottom { display: none; }
+    #content {
+      max-width: 820px;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 24px auto;
+      padding: 28px 36px;
+      line-height: 1.75;
+      font-size: 14.5px;
+      color: #1f2937;
+      background: #fff;
+      overflow-wrap: break-word;
+      word-break: break-word;
+    }
+    #content > *:first-child { margin-top: 0; }
+    #content h1 { font-size: 1.55em; font-weight: 700; color: #111827; margin: 1.2em 0 0.55em; padding-bottom: 0.3em; border-bottom: 1px solid #e5e7eb; line-height: 1.35; }
+    #content h2 { font-size: 1.3em; font-weight: 700; color: #111827; margin: 1.15em 0 0.5em; line-height: 1.4; }
+    #content h3 { font-size: 1.12em; font-weight: 600; color: #1f2937; margin: 1em 0 0.4em; line-height: 1.45; }
+    #content h4, #content h5, #content h6 { font-size: 1em; font-weight: 600; color: #374151; margin: 0.85em 0 0.35em; }
+    #content p { margin: 0.6em 0; line-height: 1.75; }
+    #content ul, #content ol { margin: 0.6em 0; padding-left: 1.5em; }
+    #content li { margin: 0.3em 0; line-height: 1.7; }
+    #content li > p { margin: 0.25em 0; }
+    #content hr { border: 0; border-top: 1px solid #e5e7eb; margin: 1.2em 0; }
+    #content code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; font-size: 0.9em; background: #f3f4f6; padding: 0.15em 0.35em; border-radius: 4px; }
+    #content pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #e5e7eb; padding: 12px 14px; border-radius: 6px; margin: 0.8em 0; line-height: 1.55; }
+    #content pre code { background: none; padding: 0; font-size: 0.88em; }
+    /* Only Markdown tables inside #content get borders; never the outer .print-frame. */
+    #content table { border-collapse: collapse; width: 100%; max-width: 100%; table-layout: auto; margin: 0.85em 0; font-size: 0.92em; }
+    #content th, #content td { border: 1px solid #cbd5e1; padding: 7px 11px; text-align: left; vertical-align: top; overflow-wrap: anywhere; word-break: break-word; line-height: 1.55; }
+    #content th { background: #f8fafc; font-weight: 600; color: #0f172a; }
+    #content tbody tr:nth-child(even) td { background: #fcfcfd; }
+    #content blockquote { border-left: 3.5px solid #667eea; background: #f8fafc; margin: 0.8em 0; padding: 8px 14px; color: #475569; border-radius: 0 6px 6px 0; }
+    #content img { max-width: 100% !important; height: auto !important; max-height: 170mm; object-fit: contain; display: block; margin: 10px auto; }
+    #content td img, #content th img { max-height: 75mm; margin: 4px auto; }
+    .chatsavor-math { max-width: 100%; }
+    div.chatsavor-math { margin: 12px 0; padding: 4px 0; text-align: center; overflow-x: auto; overflow-y: hidden; }
+    #dynamic-page-style { display: none; }
+    @media print {
+      @page { size: A4; margin: 0; }
+      #toolbar { display: none !important; }
+      body { color: #111827; background: #fff; }
+      h1, h2, h3, h4 { break-after: avoid; page-break-after: avoid; }
+      #content pre, #content tr, #content blockquote, #content img { break-inside: avoid; page-break-inside: avoid; }
+      pre { white-space: pre-wrap; }
+      .print-frame > thead > tr > td > .page-margin-top,
+      .page-margin-top {
+        height: 18mm;
+        padding: 0 18mm 3mm !important;
+        display: flex !important;
+        align-items: flex-end;
+        justify-content: space-between;
+        font-size: 9pt;
+        color: #9ca3af;
+        box-sizing: border-box;
+      }
+      .print-frame > tfoot > tr > td > .page-margin-bottom,
+      .page-margin-bottom {
+        height: 18mm;
+        padding: 3mm 18mm 0 !important;
+        display: flex !important;
+        align-items: flex-start;
+        justify-content: space-between;
+        font-size: 9pt;
+        color: #9ca3af;
+        box-sizing: border-box;
+      }
+      .print-frame > tbody > tr > td.page-body-cell {
+        padding: 0 18mm !important;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+      }
+      #content {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 10.5pt;
+        line-height: 1.72;
+      }
+      #content table { font-size: 9.5pt; }
+      #content thead { display: table-header-group; }
+    }
+  </style>
+  <style id="dynamic-page-style"></style>
+</head>
+<body>
+  <div id="toolbar">
+    <strong>ChatSavor PDF 导出</strong>
+    <label>页脚
+      <select id="footerMode">
+        <option value="none">无页眉页脚（纯净）</option>
+        <option value="source">显示来源与时间</option>
+        <option value="custom">自定义页脚文字</option>
+      </select>
+    </label>
+    <input type="text" id="footerText" placeholder="输入页脚署名…" style="display:none">
+    <label>水印
+      <select id="watermarkMode">
+        <option value="none">无水印</option>
+        <option value="tiled">全页斜向平铺水印</option>
+        <option value="corner">右下角标水印</option>
+      </select>
+    </label>
+    <input type="text" id="watermarkText" placeholder="水印文字（如 ChatSavor）" value="ChatSavor">
+    <label>浓度 <input type="range" id="watermarkOpacity" min="0.03" max="0.20" step="0.01" value="0.07"></label>
+    <label><input type="checkbox" id="autoPrint" checked> 打开时自动唤起打印</label>
+    <button id="print">打印 / 保存为 PDF</button>
+    <span id="status">正在加载内容…</span>
+  </div>
+  <div id="watermark-layer" aria-hidden="true"></div>
+  <table class="print-frame" role="presentation">
+    <thead><tr><td><div class="page-margin-top"><span id="running-header"></span></div></td></tr></thead>
+    <tbody><tr><td class="page-body-cell"><article id="content"></article></td></tr></tbody>
+    <tfoot><tr><td><div class="page-margin-bottom"><span id="running-footer"></span></div></td></tr></tfoot>
+  </table>
+  <script src="print.js"></script>
+</body>
+</html>

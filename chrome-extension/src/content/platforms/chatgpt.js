@@ -140,6 +140,109 @@
     });
   }
 
+  // Convert ChatGPT's interactive DilRenderer components into static,
+  // Markdown-friendly structures before turndown strips buttons/div grids.
+  function normalizeDilComponents(clone) {
+    if (!clone || !clone.querySelectorAll) return;
+    // 1) Remove slider tracks and colour-clip bars with no explanatory text.
+    clone.querySelectorAll('[data-d-component="slider"], [data-d-clip="true"]').forEach(function(n) { n.remove(); });
+
+    // 2) Preserve segmented-control options as a single readable paragraph.
+    clone.querySelectorAll('[data-d-component="segmented-control"]').forEach(function(control) {
+      var parts = [];
+      control.querySelectorAll('button, [role="radio"], [role="tab"]').forEach(function(btn) {
+        var label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!label) return;
+        var selected = btn.getAttribute('aria-checked') === 'true' || btn.getAttribute('data-state') === 'on' || btn.classList.contains('selected');
+        parts.push(selected ? '**[✓ ' + label + ']**' : '[' + label + ']');
+      });
+      var p = document.createElement('p');
+      p.textContent = parts.join(' · ');
+      control.replaceWith(p);
+    });
+
+    // 3) Convert multi-column grids into compact tables with real label headers.
+    clone.querySelectorAll('[data-d-component="grid"]').forEach(function(grid) {
+      var items = Array.from(grid.children).filter(function(c) { return c && c.nodeType === 1; });
+      if (items.length < 2) return;
+      var styleAttr = grid.getAttribute('style') || '';
+      var colMatch = /repeat\((\d+)/.exec(styleAttr);
+      var cols = colMatch ? parseInt(colMatch[1], 10) : Math.min(items.length, 3);
+      if (cols < 1) cols = Math.min(items.length, 3);
+
+      function cellParts(item) {
+        var fragment = document.createElement('div');
+        // Promote image/content wrapped by empty pressable buttons.
+        Array.from(item.querySelectorAll('button[data-d-component="pressable"]')).forEach(function(btn) {
+          while (btn.firstChild) fragment.appendChild(btn.firstChild);
+          btn.remove();
+        });
+        Array.from(item.childNodes).forEach(function(node) {
+          if (node.nodeType === 1 && node.matches && node.matches('button[data-d-component="pressable"]')) return;
+          fragment.appendChild(node.cloneNode(true));
+        });
+        fragment.querySelectorAll('h1, h2, h3, h4').forEach(function(h) {
+          var strong = document.createElement('strong');
+          strong.textContent = (h.textContent || '').trim();
+          h.replaceWith(strong);
+        });
+        var blocks = [];
+        Array.from(fragment.childNodes).forEach(function(node) {
+          var text = (node.textContent || '').replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          if (node.nodeType === 1 && /^(?:STRONG|IMG)$/.test(node.tagName)) blocks.push(node.outerHTML);
+          else blocks.push(text);
+        });
+        return blocks;
+      }
+
+      var parsed = items.map(function(item) {
+        var blocks = cellParts(item);
+        return { label: blocks.length ? blocks[0] : '', value: blocks.slice(1).join('<br>') };
+      });
+      var table = document.createElement('table');
+      var thead = document.createElement('thead');
+      var headRow = document.createElement('tr');
+      var tbody = document.createElement('tbody');
+      // The first visual row supplies the real column labels (never "Column 1").
+      for (var c = 0; c < cols; c++) {
+        var th = document.createElement('th');
+        th.innerHTML = parsed[c] && parsed[c].label || '';
+        headRow.appendChild(th);
+      }
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      // Values of the first row, then all following rows, become data cells.
+      for (var i = 0; i < items.length; i += cols) {
+        var row = document.createElement('tr');
+        for (var cc = 0; cc < cols; cc++) {
+          var td = document.createElement('td');
+          var entry = parsed[i + cc];
+          td.innerHTML = entry ? entry.value : '';
+          row.appendChild(td);
+        }
+        tbody.appendChild(row);
+      }
+      table.appendChild(tbody);
+      grid.replaceWith(table);
+    });
+
+    // 4) Merge leaf-level key/value rows onto one line.
+    clone.querySelectorAll('[data-d-component="row"]').forEach(function(row) {
+      if (row.querySelector('table, pre, ul, ol, img, [data-d-component="grid"], [data-d-component="card"]')) return;
+      var chunks = [];
+      Array.from(row.children).forEach(function(cell) {
+        if (cell.matches && cell.matches('[data-d-component="spacer"], [data-d-component="box"]')) return;
+        var text = (cell.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) chunks.push(text);
+      });
+      if (chunks.length < 2) return;
+      var p = document.createElement('p');
+      p.textContent = chunks.join(' · ');
+      row.replaceWith(p);
+    });
+  }
+
   function extractReply(el) {
     var clone = dom ? dom.clone(el) : el.cloneNode(true);
     // The transcript's <li> is page structure, not a bullet in the assistant's answer.
@@ -167,7 +270,14 @@
       if (!replacement.childNodes.length) replacement.textContent = button.textContent;
       button.replaceWith(replacement);
     });
-    return core.extractMarkdown(clone);
+    normalizeDilComponents(clone);
+    var result = core.extractMarkdown(clone);
+    if (result) {
+      var thinkingNodes = (dom ? dom.queryAll('[class*="thinking"], [class*="reasoning"], [data-testid*="thinking"]', el) : Array.from(el.querySelectorAll('[class*="thinking"], [class*="reasoning"], [data-testid*="thinking"]')));
+      var thinking = thinkingNodes.map(function(n) { return (n.textContent || '').trim(); }).filter(Boolean).join('\n\n');
+      if (thinking) result.thinking = thinking;
+    }
+    return result;
   }
 
   function injectButton(el) {
@@ -175,7 +285,7 @@
     if (hasInjectedButton(el)) return true;
     var onClick = function() {
       var result = extractReply(el);
-      if (result && result.markdown) core.showPreviewModal(result.markdown);
+      if (result && result.markdown) core.showPreviewModal(result.markdown, result.thinking ? { thinking: result.thinking } : undefined);
     };
     // Keep <ol> children valid and put the action inside this message, never after the thread.
     if (el.matches('li[data-message-role="assistant"], ' + UNIT_SELECTOR)) {
@@ -210,8 +320,24 @@
     catch (error) { if (window.ChatSavorBridge) window.ChatSavorBridge.recordError(error); }
   }
 
+  function getTurns() {
+    var userSel = '[data-message-author-role="user"], [data-turn="user"], [data-message-role="user"], [data-content-search-unit-key$=":user"], [data-chatgpt-search-unit-key$=":user"]';
+    var assistantSel = '[data-message-author-role="assistant"], [data-turn="assistant"], [data-message-role="assistant"], [data-content-search-unit-key$=":assistant"], [data-chatgpt-search-unit-key$=":assistant"], [data-assistant-markdown], [data-markdown-text-style="assistant-message"]';
+    var turns = [];
+    (dom ? dom.queryAll(userSel) : Array.from(document.querySelectorAll(userSel))).forEach(function(el) { turns.push({ role: 'user', element: el }); });
+    findResponseElements().forEach(function(el) { turns.push({ role: 'assistant', element: el }); });
+    var seen = new Set();
+    turns = turns.filter(function(turn) {
+      if (seen.has(turn.element)) return false;
+      seen.add(turn.element);
+      return isVisible(turn.element);
+    });
+    turns.sort(function(a, b) { return dom ? dom.compare(a.element, b.element) : 0; });
+    return turns;
+  }
+
   window.ChatSavorChatGPTAdapter = {
-    platform: 'chatgpt', version: version, core: core, scan: scan, getResponses: findResponseElements, extractMarkdown: extractReply,
+    platform: 'chatgpt', version: version, core: core, scan: scan, getResponses: findResponseElements, getTurns: getTurns, extractMarkdown: extractReply,
     dispose: function() { scanTimers.forEach(function(id) { clearTimeout(id); clearInterval(id); }); },
     diagnostics: function() {
       var nodes = dom ? dom.queryAll(ASSISTANT_SELECTOR) : Array.from(document.querySelectorAll(ASSISTANT_SELECTOR));
