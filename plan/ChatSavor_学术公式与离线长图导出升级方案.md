@@ -319,10 +319,10 @@ Content Script 在第三方网页中直接 `fetch` 图床 URL 会遇到 CORS 报
 
 ## 执行进度追踪 Checklist
 
-- [ ] **Task U-01** `src/lib/zip.js`（二进制 + UTF-8 文件名标志位 `0x0800`）与 `background.js` 跨源图片抓取 `CHATSAVOR_FETCH_IMAGE`
-- [ ] **Task U-02** `src/lib/omml.js`（LaTeX → KaTeX MathML → Word 原生 `<m:oMath>`）并无损接入 `docx-builder.js`（保持独立 eval 向后兼容）
-- [ ] **Task U-03** `src/lib/latex-builder.js`（Overleaf XeLaTeX `ctexart` + `longtable` 三线表导出）并接入预览弹窗 `.tex` 按钮
-- [ ] **Task U-04** `src/content/assets-packager.js` + IndexedDB 目录句柄 + `writer.html/js`（`.zip` 离线含图包 + 本地 Obsidian 库一键直写）
-- [ ] **Task U-05** `src/lib/card-image.js`（3 套主题 + 严格 XHTML 序列化 + 智能防截断多图切片 + 剪贴板复制/下载）
-- [ ] **Task U-06** 4 个真行为回归测试文件全部编写并通过
-- [ ] 运行 `npm --prefix chrome-extension test` 全量 0 fail, 0 skipped，且 `npm --prefix chrome-extension run check:version` 通过、`git status` 无临时垃圾脚本
+- [x] **Task U-01** `src/lib/zip.js`（二进制 + UTF-8 文件名标志位 `0x0800`）与 `background.js` 跨源图片抓取 `CHATSAVOR_FETCH_IMAGE`
+- [x] **Task U-02** `src/lib/omml.js`（LaTeX → KaTeX MathML → Word 原生 `<m:oMath>`）并无损接入 `docx-builder.js`（保持独立 eval 向后兼容）
+- [x] **Task U-03** `src/lib/latex-builder.js`（Overleaf XeLaTeX `ctexart` + `longtable` 三线表导出）并接入预览弹窗 `.tex` 按钮
+- [x] **Task U-04** `src/content/assets-packager.js` + IndexedDB 目录句柄 + `writer.html/js`（`.zip` 离线含图包 + 本地 Obsidian 库一键直写）
+- [x] **Task U-05** `src/lib/card-image.js`（3 套主题 + 严格 XHTML 序列化 + 智能防截断多图切片 + 剪贴板复制/下载）
+- [x] **Task U-06** 4 个真行为回归测试文件全部编写并通过
+- [x] 运行 `npm --prefix chrome-extension test` 全量 0 fail, 0 skipped，且 `npm --prefix chrome-extension run check:version` 通过、`git status` 无临时垃圾脚本

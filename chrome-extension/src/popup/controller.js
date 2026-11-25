@@ -9,15 +9,21 @@
   var manifest = chrome.runtime.getManifest();
   var statusText = document.getElementById('page-status');
   var detailText = document.getElementById('page-detail');
+  var statusDot = document.getElementById('status-dot');
   var buttons = Array.from(document.querySelectorAll('button'));
   document.getElementById('version').textContent = manifest.version;
 
+  function setStatusDot(state) {
+    if (!statusDot) return;
+    statusDot.dataset.state = state;
+  }
+
   function displayStatus(status) {
     lastStatus = status;
-    if (!status.coreReady || !status.markdownReady) statusText.textContent = '转换脚本加载不完整';
-    else if (!status.adapter) statusText.textContent = '网页已连接，但回复识别模块未加载';
-    else if (!status.responseCount) statusText.textContent = '网页已连接，暂未识别到回复';
-    else statusText.textContent = '已识别 ' + status.responseCount + ' 条回复，' + status.buttonCount + ' 个回复转换按钮';
+    if (!status.coreReady || !status.markdownReady) { statusText.textContent = '转换脚本加载不完整'; setStatusDot('error'); }
+    else if (!status.adapter) { statusText.textContent = '网页已连接，但回复识别模块未加载'; setStatusDot('idle'); }
+    else if (!status.responseCount) { statusText.textContent = '网页已连接，暂未识别到回复'; setStatusDot('idle'); }
+    else { statusText.textContent = '已识别 ' + status.responseCount + ' 条回复，' + status.buttonCount + ' 个回复转换按钮'; setStatusDot('ready'); }
     detailText.textContent = status.host + ' · 页面脚本 ' + status.version;
   }
 
@@ -31,7 +37,7 @@
     if (busy) return;
     busy = true; buttons.forEach(function(button) { button.disabled = true; });
     try { await action(); }
-    catch (error) { lastError = cleanError(error); statusText.textContent = '操作未完成'; detailText.textContent = lastError; }
+    catch (error) { lastError = cleanError(error); statusText.textContent = '操作未完成'; detailText.textContent = lastError; setStatusDot('error'); }
     finally { busy = false; buttons.forEach(function(button) { button.disabled = false; }); }
   }
 
@@ -47,6 +53,15 @@
   }
 
   document.getElementById('scan-page').addEventListener('click', function() { run(function() { return command('SCAN', true); }); });
+  var openOptions = document.getElementById('open-options');
+  if (openOptions) {
+    openOptions.addEventListener('click', function() {
+      try {
+        if (chrome.runtime && typeof chrome.runtime.openOptionsPage === 'function') chrome.runtime.openOptionsPage();
+        else chrome.tabs.create({ url: chrome.runtime.getURL('src/options/options.html') });
+      } catch (ignored) {}
+    });
+  }
   document.getElementById('convert-latest').addEventListener('click', function() { run(function() { return command('LATEST'); }); });
   document.getElementById('convert-selection').addEventListener('click', function() { run(function() { return command('SELECTION'); }); });
   document.getElementById('export-all').addEventListener('click', function() { run(function() { return command('EXPORT_ALL'); }); });

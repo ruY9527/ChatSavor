@@ -220,7 +220,16 @@ window.ChatSavorMarkdown = (function() {
       var img = document.createElement('img');
       img.setAttribute('alt', '');
       img.setAttribute('src', uri);
-      svg.replaceWith(img);
+      // Block-level charts must not glue onto adjacent caption text: wrap in <p>
+      // when the svg is not inside an inline context (p/td/th/li/a/span).
+      var parent = svg.parentElement;
+      if (parent && !parent.matches('p, td, th, li, a, span')) {
+        var wrap = document.createElement('p');
+        wrap.appendChild(img);
+        svg.replaceWith(wrap);
+      } else {
+        svg.replaceWith(img);
+      }
     });
     root.querySelectorAll('img[src^="http"]').forEach(function(img) { img.setAttribute('referrerpolicy', 'no-referrer'); });
     root.querySelectorAll('svg').forEach(function(node) { node.remove(); });
@@ -326,14 +335,22 @@ window.ChatSavorMarkdown = (function() {
         var name = attr.name.toLowerCase();
         if (name.indexOf('on') === 0) { node.removeAttribute(attr.name); return; }
         if ((name === 'href' || name === 'xlink:href') && String(attr.value).charAt(0) !== '#') node.removeAttribute(attr.name);
+        // Freeze host CSS variables in attribute values (presentation attrs + style).
+        var v = String(attr.value || '');
+        var next = v
+          .replace(/var\(--[^),]*(?:text|fg|foreground|prose|ink|label|primary)[^)]*\)/gi, '#1f2937')
+          .replace(/var\(--[^),]*(?:muted|secondary|caption|sub)[^)]*\)/gi, '#64748b')
+          .replace(/var\(--[^),]*(?:border|line|grid|divider|stroke)[^)]*\)/gi, '#cbd5e1')
+          .replace(/var\(--[^),]*(?:bg|background|surface|card|fill)[^)]*\)/gi, '#f8fafc');
+        if (next !== v) node.setAttribute(attr.name, next);
       });
     });
+    // Inject a readable text color without ever producing a duplicate `style` attribute.
+    var existingStyle = doc.documentElement.getAttribute('style') || '';
+    if (!/(?:^|;)\s*color\s*:/i.test(existingStyle)) {
+      doc.documentElement.setAttribute('style', (existingStyle ? existingStyle.replace(/;\s*$/, '') + '; ' : '') + 'color: #1f2937');
+    }
     var svg = new XMLSerializer().serializeToString(doc.documentElement);
-    svg = svg.replace(/var\(--[^),]*(?:text|fg|foreground|prose|ink|label|primary)[^)]*\)/gi, '#1f2937')
-      .replace(/var\(--[^),]*(?:muted|secondary|caption|sub)[^)]*\)/gi, '#64748b')
-      .replace(/var\(--[^),]*(?:border|line|grid|divider|stroke)[^)]*\)/gi, '#cbd5e1')
-      .replace(/var\(--[^),]*(?:bg|background|surface|card|fill)[^)]*\)/gi, '#f8fafc');
-    if (!/color\s*:/i.test(svg)) svg = svg.replace(/<svg([^>]*)>/, '<svg$1 style="color:#1f2937">');
     try {
       return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)));
     } catch (ignored) { return null; }

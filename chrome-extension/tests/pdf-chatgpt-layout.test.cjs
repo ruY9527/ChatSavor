@@ -118,9 +118,11 @@ test('L5 segmented control, grid table with real headers and merged row', t => {
   const adapter = dom.window.ChatSavorChatGPTAdapter;
   assert.ok(adapter);
   const result = adapter.extractMarkdown(adapter.getResponses()[0]);
-  assert.ok(result.markdown.includes('\\[8 × 8\\]') || result.markdown.includes('[8 × 8]'));
-  assert.ok(result.markdown.includes('\\*\\*\\[✓ 16 × 16\\]\\*\\*') || result.markdown.includes('**[✓ 16 × 16]**'));
-  assert.ok(result.markdown.includes('\\[32 × 32\\]') || result.markdown.includes('[32 × 32]'));
+  // D-02: segmented control now renders real DOM with fullwidth brackets, never a
+  // leading \[ that could be misparsed as a display-math opener.
+  assert.ok(result.markdown.includes('（8 × 8）'));
+  assert.ok(result.markdown.includes('【✓ 16 × 16】'));
+  assert.ok(result.markdown.includes('（32 × 32）'));
   assert.match(result.markdown, /Patch 总数量/);
   assert.match(result.markdown, /每个 Patch 像素数/);
   assert.doesNotMatch(result.markdown, /Column 1/);

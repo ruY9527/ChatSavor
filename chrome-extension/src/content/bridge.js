@@ -76,6 +76,10 @@
   var selectedTurns = [];
   var modifiedPositions = [];
 
+  function selectEscapeHandler(e) {
+    if (e.key === 'Escape') clearSelectMode();
+  }
+
   function clearSelectMode() {
     selectMarks.forEach(function(mark) { if (mark.parentNode) mark.parentNode.removeChild(mark); });
     selectMarks = [];
@@ -85,12 +89,15 @@
     if (selectHost && selectHost.parentNode) selectHost.parentNode.removeChild(selectHost);
     selectHost = null;
     selectShadow = null;
+    document.removeEventListener('keydown', selectEscapeHandler);
   }
 
   function updateSelectCounter() {
     if (!selectShadow) return;
     var count = selectShadow.querySelector('.cs-count');
     if (count) count.textContent = '已选中 ' + selectedTurns.length + ' / ' + selectMarks.length + ' 条';
+    var exportBtn = selectShadow.querySelector('.cs-export');
+    if (exportBtn) exportBtn.style.opacity = selectedTurns.length === 0 ? '0.5' : '1';
   }
 
   function exportSelected() {
@@ -120,25 +127,35 @@
     selectShadow = selectHost.attachShadow({ mode: 'open' });
     var style = document.createElement('style');
     style.textContent = ':host{all:initial;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}' +
-      '.bar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1f2937;color:#fff;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.3);font-size:12px}' +
-      '.bar button{padding:5px 10px;border:none;border-radius:6px;background:#4b5563;color:#fff;cursor:pointer;font-size:12px}' +
-      '.bar button:hover{background:#667eea}' +
-      '.count{min-width:110px;text-align:center}';
+      '.bar{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:rgba(15,23,42,0.92);backdrop-filter:blur(12px);color:#f8fafc;border:1px solid rgba(255,255,255,0.14);border-radius:999px;box-shadow:0 16px 40px rgba(2,6,23,0.42);font-size:12.5px}' +
+      '.bar button{padding:5px 12px;border:none;border-radius:999px;background:rgba(255,255,255,0.1);color:#f8fafc;cursor:pointer;font-size:12px;transition:all 140ms ease}' +
+      '.bar button:hover{background:rgba(255,255,255,0.18)}' +
+      '.bar .cs-export{background:#4f46e5;color:#fff;font-weight:600}' +
+      '.bar .cs-cancel{background:transparent;color:#cbd5e1}' +
+      '.bar .cs-cancel:hover{color:#f87171;background:transparent}' +
+      '.cs-count{background:rgba(99,102,241,0.22);color:#c7d2fe;padding:4px 10px;border-radius:999px;font-weight:600;white-space:nowrap}';
     selectShadow.appendChild(style);
     var bar = document.createElement('div');
     bar.className = 'bar';
     var count = document.createElement('span');
     count.className = 'cs-count';
     var all = document.createElement('button');
+    all.type = 'button';
     all.textContent = '全选';
     var aiOnly = document.createElement('button');
+    aiOnly.type = 'button';
     aiOnly.textContent = '仅选 AI 回复';
     var exportBtn = document.createElement('button');
+    exportBtn.type = 'button';
+    exportBtn.className = 'cs-export';
     exportBtn.textContent = '导出选中';
     var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = 'cs-cancel';
     cancel.textContent = '取消';
     bar.appendChild(count); bar.appendChild(all); bar.appendChild(aiOnly); bar.appendChild(exportBtn); bar.appendChild(cancel);
     selectShadow.appendChild(bar);
+    document.addEventListener('keydown', selectEscapeHandler);
 
     turns.forEach(function(turn) {
       if (turn.element.querySelector(':scope > .ai-saver-select-mark')) return;

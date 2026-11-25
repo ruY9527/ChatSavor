@@ -147,39 +147,99 @@ window.ChatSavorCore = (function() {
   }
 
   // ── Create save button (Shadow DOM isolated) ──
-  function createSaveButton(onClick) {
+  function createSaveButton(onClick, quickCopyHandler) {
     var host = document.createElement('div');
     host.className = 'ai-saver-host';
-    host.style.cssText = 'display:flex; justify-content:flex-end; padding:4px 0; margin-top:4px;';
+    host.style.cssText = 'display:flex; justify-content:flex-end; padding:6px 0 2px; margin-top:6px;';
 
     var shadow = host.attachShadow({ mode: 'open' });
     var style = document.createElement('style');
     style.textContent = [
       ':host{all:initial;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;display:block}',
-      '.save-btn{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;',
-      'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:6px;',
-      'cursor:pointer;font-size:12px;font-weight:500;box-shadow:0 2px 8px rgba(102,126,234,.4);',
-      'transition:all .2s;user-select:none;white-space:nowrap}',
-      '.save-btn:hover{background:linear-gradient(135deg,#5a6fd6,#6a3f96);box-shadow:0 4px 12px rgba(102,126,234,.6);transform:translateY(-1px)}',
-      '.save-btn:active{transform:translateY(0)}',
+      '.cs-action-pill{display:inline-flex;align-items:center;gap:2px;padding:2px;background:rgba(255,255,255,0.92);border:1px solid rgba(226,232,240,0.95);border-radius:999px;box-shadow:0 2px 8px rgba(15,23,42,0.06);backdrop-filter:blur(8px);}',
+      '@media (prefers-color-scheme: dark){.cs-action-pill{background:rgba(30,41,59,0.88);border-color:rgba(71,85,105,0.7);box-shadow:0 2px 10px rgba(0,0,0,0.25);}}',
+      '.save-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:transparent;border:none;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;color:#4f46e5;transition:all 140ms ease;user-select:none;white-space:nowrap;}',
+      '@media (prefers-color-scheme: dark){.save-btn{color:#818cf8;}}',
+      '.save-btn:hover{background:#4f46e5;color:#ffffff;}',
+      '.quick-copy-btn{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;background:transparent;border:none;border-radius:999px;cursor:pointer;font-size:12px;font-weight:500;color:#334155;transition:all 140ms ease;user-select:none;white-space:nowrap;}',
+      '@media (prefers-color-scheme: dark){.quick-copy-btn{color:#cbd5e1;}}',
+      '.quick-copy-btn:hover{background:rgba(15,23,42,0.06);}',
+      '.quick-copy-btn.is-copied{color:#059669;}',
+      '.pill-sep{width:1px;height:12px;background:rgba(226,232,240,0.95);flex:none;}',
+      '.btn-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;}',
+      '.btn-label{display:inline;}',
     ].join('\n');
 
+    var pill = document.createElement('div');
+    pill.className = 'cs-action-pill';
+
     var btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'save-btn';
-    btn.textContent = '🔄 转换';
+    btn.setAttribute('title', '打开预览与导出工作台');
+    var iconWrap = document.createElement('span');
+    iconWrap.className = 'btn-icon';
+    iconWrap.setAttribute('aria-hidden', 'true');
+    iconWrap.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v12M4 6l4-4 4 4"/></svg>';
+    var labelWrap = document.createElement('span');
+    labelWrap.className = 'btn-label';
+    labelWrap.textContent = '导出 / 预览';
+    btn.appendChild(iconWrap);
+    btn.appendChild(labelWrap);
     btn.addEventListener('click', function(e) { e.stopPropagation(); e.preventDefault(); onClick(); });
+    pill.appendChild(btn);
+
+    if (quickCopyHandler) {
+      var sep = document.createElement('span');
+      sep.className = 'pill-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      pill.appendChild(sep);
+
+      var copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'quick-copy-btn';
+      copyBtn.setAttribute('title', '一键复制 Markdown');
+      var copyIcon = document.createElement('span');
+      copyIcon.className = 'btn-icon';
+      copyIcon.setAttribute('aria-hidden', 'true');
+      copyIcon.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8" height="8" rx="1"/><path d="M11 5V3a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2"/></svg>';
+      var copyLabel = document.createElement('span');
+      copyLabel.className = 'btn-label';
+      copyLabel.textContent = '复制 MD';
+      copyBtn.appendChild(copyIcon);
+      copyBtn.appendChild(copyLabel);
+      copyBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        quickCopyHandler(copyBtn, copyLabel);
+      });
+      pill.appendChild(copyBtn);
+    }
 
     shadow.appendChild(style);
-    shadow.appendChild(btn);
+    shadow.appendChild(pill);
     return host;
   }
 
   // ── Inject button below a container ──
   function injectButtonAfter(container, onClick) {
     if (!container || !container.parentElement) return false;
-    // Check if a button already exists as a sibling after this container
     if (container.nextElementSibling && container.nextElementSibling.classList.contains('ai-saver-host')) return false;
-    var btn = createSaveButton(onClick);
+    var quickCopyHandler = function(btn, label) {
+      var result = extractMarkdown(container);
+      var text = result && result.markdown || '';
+      if (window.ChatSavorMeta) {
+        var pageMeta = window.ChatSavorMeta.getPageMeta(null, text);
+        text = window.ChatSavorMeta.withFrontmatter(text, pageMeta, frontmatterEnabled());
+        saveHistory(result && result.markdown || text, pageMeta);
+      }
+      window.ChatSavorMarkdown.copy(text, false).then(function() {
+        label.textContent = '✓ 已复制';
+        btn.classList.add('is-copied');
+        setTimeout(function() { label.textContent = '复制 MD'; btn.classList.remove('is-copied'); }, 1400);
+      }).catch(function() {});
+    };
+    var btn = createSaveButton(onClick, quickCopyHandler);
     if (container.nextSibling) {
       container.parentElement.insertBefore(btn, container.nextSibling);
     } else {
@@ -278,6 +338,54 @@ window.ChatSavorCore = (function() {
       '.modal.dark .preview th,.modal.dark .preview td{border-color:var(--cs-border)}',
       '.raw-md-editor{width:100%;min-height:260px;box-sizing:border-box;background:var(--cs-code-bg);color:var(--cs-text);border:1px solid var(--cs-border);border-radius:6px;padding:14px;font-family:"Fira Code",Consolas,monospace;font-size:13px;line-height:1.6;resize:vertical}',
       '.theme-btn{margin-left:auto;background:rgba(255,255,255,.2)}',
+      // ── UI redesign tokens & layout ──
+      '.modal{--cs-surface-2:#f1f5f9;--cs-text-secondary:#334155;--cs-muted:#64748b;--cs-accent:#4f46e5;--cs-accent-hover:#4338ca;--cs-accent-soft:#eef2ff;--cs-success:#059669;--cs-danger:#dc2626;}',
+      '.modal.dark{--cs-surface-2:#020617;--cs-text-secondary:#cbd5e1;--cs-muted:#94a3b8;--cs-accent:#6366f1;--cs-accent-hover:#818cf8;--cs-accent-soft:rgba(99,102,241,0.16);--cs-success:#34d399;--cs-danger:#f87171;}',
+      '.overlay{background:rgba(15,23,42,0.52);backdrop-filter:blur(6px);padding:16px;box-sizing:border-box;}',
+      '.modal{width:860px;max-width:94vw;max-height:88vh;border-radius:16px;border:1px solid var(--cs-border);box-shadow:0 25px 65px -12px rgba(15,23,42,0.32);animation:csModalIn 180ms cubic-bezier(0.16,1,0.3,1);}',
+      '.modal.expanded{width:1140px;max-width:96vw;height:92vh;max-height:92vh;}',
+      '@keyframes csModalIn{from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)}}',
+      '.modal-header{background:var(--cs-bg);color:var(--cs-text);border-bottom:1px solid var(--cs-border);padding:14px 20px;display:flex;align-items:center;gap:10px;justify-content:space-between;}',
+      '.header-left{display:flex;align-items:center;gap:10px;min-width:0;}',
+      '.brand-icon{display:inline-flex;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;align-items:center;justify-content:center;flex:none;}',
+      '.modal-header h2{font-size:15px;font-weight:600;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.doc-stats{font-size:11px;color:var(--cs-muted);background:var(--cs-surface);border:1px solid var(--cs-border);border-radius:999px;padding:2px 8px;flex:none;}',
+      '.header-controls{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none;}',
+      '.expand-btn,.theme-btn,.close-btn{width:30px;height:30px;border-radius:8px;border:none;background:transparent;color:var(--cs-muted);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 140ms ease;}',
+      '.expand-btn:hover,.theme-btn:hover{background:var(--cs-surface);color:var(--cs-text);}',
+      '.close-btn{font-size:16px;}',
+      '.close-btn:hover{background:var(--cs-accent-soft);color:var(--cs-accent);}',
+      '.tabs{display:flex;align-items:center;gap:10px;padding:8px 20px;background:var(--cs-surface);border-bottom:1px solid var(--cs-border);flex-wrap:wrap;}',
+      '.tab-group{display:inline-flex;background:var(--cs-surface-2);padding:3px;border-radius:9px;gap:2px;}',
+      '.tab{padding:5px 14px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--cs-muted);border:none;background:transparent;cursor:pointer;}',
+      '.tab.active{background:var(--cs-bg);color:var(--cs-accent);font-weight:600;box-shadow:0 1px 3px rgba(15,23,42,0.08);}',
+      '.tabs-controls{margin-left:auto;display:flex;align-items:center;gap:12px;}',
+      '.tabs-controls select.cot-mode{font-size:12px;padding:5px 8px;border-radius:7px;border:1px solid var(--cs-border);background:var(--cs-bg);color:var(--cs-text-secondary);}',
+      '.frontmatter-toggle{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--cs-text-secondary);cursor:pointer;}',
+      '.frontmatter-toggle input{position:absolute;opacity:0;width:0;height:0;}',
+      '.switch-slider{width:30px;height:17px;background:var(--cs-border);border-radius:999px;position:relative;transition:all 140ms ease;flex:none;}',
+      '.switch-slider:before{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;background:#fff;border-radius:50%;transition:all 140ms ease;}',
+      '.frontmatter-toggle input:checked + .switch-slider{background:var(--cs-accent);}',
+      '.frontmatter-toggle input:checked + .switch-slider:before{transform:translateX(13px);}',
+      '.modal-body{padding:22px 28px;}',
+      '.modal-footer{display:flex;flex-direction:column;gap:10px;padding:12px 20px 14px;background:var(--cs-surface);border-top:1px solid var(--cs-border);}',
+      '.footer-row-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}',
+      '.action-group{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}',
+      '.card-capsule{display:inline-flex;align-items:center;background:var(--cs-bg);border:1px solid var(--cs-border);border-radius:9px;padding:2px;gap:2px;}',
+      '.card-capsule select.card-theme-select{border:none;background:transparent;font-size:12px;padding:5px 6px;color:var(--cs-text-secondary);}',
+      '.capsule-sep{width:1px;height:18px;background:var(--cs-border);}',
+      '.footer-row-bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed var(--cs-border);}',
+      '.dock-label{font-size:11.5px;font-weight:600;color:var(--cs-muted);margin-right:4px;}',
+      '.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border:none;border-radius:7px;cursor:pointer;font-size:12px;font-weight:500;transition:all 140ms ease;}',
+      '.btn-primary{background:var(--cs-accent);color:#fff;}',
+      '.btn-primary:hover{background:var(--cs-accent-hover);}',
+      '.btn-secondary{background:var(--cs-bg);color:var(--cs-text-secondary);border:1px solid var(--cs-border);}',
+      '.btn-secondary:hover{border-color:var(--cs-accent);color:var(--cs-accent);background:var(--cs-accent-soft);}',
+      '.btn-format{background:var(--cs-bg);border:1px solid var(--cs-border);color:var(--cs-text-secondary);border-radius:7px;padding:5px 11px;font-size:12px;font-weight:500;}',
+      '.btn-format:hover{border-color:var(--cs-accent);background:var(--cs-accent-soft);color:var(--cs-accent);}',
+      '.btn-icon{display:inline-flex;align-items:center;justify-content:center;flex:none;}',
+      '.btn-label{display:inline;}',
+      'button:focus-visible{outline:2px solid var(--cs-accent);outline-offset:2px;}',
     ].join('\n');
     shadow.appendChild(style);
 
@@ -293,44 +401,86 @@ window.ChatSavorCore = (function() {
     // Header
     var header = document.createElement('div');
     header.className = 'modal-header';
+    var headerLeft = document.createElement('div');
+    headerLeft.className = 'header-left';
+    var brandIcon = document.createElement('span');
+    brandIcon.className = 'brand-icon';
+    brandIcon.setAttribute('aria-hidden', 'true');
+    brandIcon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h10v10H3z"/><path d="M6 6h4v4H6z"/></svg>';
     var title = document.createElement('h2');
-    title.textContent = 'AI 回复预览';
+    title.textContent = options.mode === 'conversation' ? '整场对话预览与导出' : options.mode === 'selection' ? '多选回复预览与导出' : 'AI 回复预览';
+    var docStats = document.createElement('span');
+    docStats.className = 'doc-stats';
+    docStats.textContent = String(markdown.length) + ' 字符' + (options.turnsCount ? ' · ' + options.turnsCount + ' 轮' : '');
+    headerLeft.appendChild(brandIcon);
+    headerLeft.appendChild(title);
+    headerLeft.appendChild(docStats);
+
+    var headerRight = document.createElement('div');
+    headerRight.className = 'header-controls';
+    var expandBtn = document.createElement('button');
+    expandBtn.type = 'button';
+    expandBtn.className = 'expand-btn';
+    expandBtn.setAttribute('title', '切换宽屏视图');
+    expandBtn.setAttribute('aria-label', '切换宽屏视图');
+    expandBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h4v4M3 3l6 6M13 3H9v4M13 3l-6 6M3 13h4v-4M3 13l6-6M13 13H9v-4M13 13l-6-6"/></svg>';
+    expandBtn.addEventListener('click', function() { modal.classList.toggle('expanded'); });
     var themeBtn = document.createElement('button');
+    themeBtn.type = 'button';
     themeBtn.className = 'theme-btn';
-    themeBtn.textContent = isDark ? '☀' : '🌙';
+    themeBtn.setAttribute('title', '切换浅色/深色主题');
+    themeBtn.setAttribute('aria-label', '切换主题');
+    themeBtn.innerHTML = isDark
+      ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3a5 5 0 1 0 5 5 4.5 4.5 0 0 1-5-5z"/></svg>';
     themeBtn.addEventListener('click', function() {
       isDark = !isDark;
       modal.classList.toggle('dark', isDark);
-      themeBtn.textContent = isDark ? '☀' : '🌙';
+      themeBtn.innerHTML = isDark
+        ? '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>'
+        : '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3a5 5 0 1 0 5 5 4.5 4.5 0 0 1-5-5z"/></svg>';
       persistPref('theme', isDark ? 'dark' : 'light');
     });
     var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
     closeBtn.className = 'close-btn';
     closeBtn.textContent = '✕';
-    header.appendChild(title);
-    header.appendChild(themeBtn);
-    header.appendChild(closeBtn);
+    closeBtn.setAttribute('aria-label', '关闭');
+    headerRight.appendChild(expandBtn);
+    headerRight.appendChild(themeBtn);
+    headerRight.appendChild(closeBtn);
+    header.appendChild(headerLeft);
+    header.appendChild(headerRight);
 
     // Tabs
     var tabs = document.createElement('div');
     tabs.className = 'tabs';
+    var tabGroup = document.createElement('div');
+    tabGroup.className = 'tab-group';
     var tabPreview = document.createElement('button');
+    tabPreview.type = 'button';
     tabPreview.className = 'tab active';
     tabPreview.textContent = '预览';
     var tabMarkdown = document.createElement('button');
+    tabMarkdown.type = 'button';
     tabMarkdown.className = 'tab';
     tabMarkdown.textContent = 'Markdown';
-    tabs.appendChild(tabPreview);
-    tabs.appendChild(tabMarkdown);
+    tabGroup.appendChild(tabPreview);
+    tabGroup.appendChild(tabMarkdown);
     var formulas = window.ChatSavorMarkdown.getFormulas(markdown);
     var tabFormulas = document.createElement('button');
+    tabFormulas.type = 'button';
     tabFormulas.className = 'tab';
     tabFormulas.textContent = '公式 (' + formulas.length + ')';
-    if (formulas.length) tabs.appendChild(tabFormulas);
+    if (formulas.length) tabGroup.appendChild(tabFormulas);
+    tabs.appendChild(tabGroup);
+
+    var tabsControls = document.createElement('div');
+    tabsControls.className = 'tabs-controls';
+    var cotSelect = null;
     if (thinking) {
-      var cotSelect = document.createElement('select');
+      cotSelect = document.createElement('select');
       cotSelect.className = 'cot-mode';
-      cotSelect.style.cssText = 'margin-left:auto;font-size:12px;padding:3px 6px;border-radius:5px;border:1px solid #ddd';
       [['omit', '隐藏思考'], ['details', '折叠思考'], ['callout', 'Obsidian Callout']].forEach(function(pair) {
         var opt = document.createElement('option');
         opt.value = pair[0]; opt.textContent = pair[1];
@@ -347,10 +497,12 @@ window.ChatSavorCore = (function() {
         previewDiv.innerHTML = window.ChatSavorMarkdown.render(markdown);
         mdDiv.value = markdown;
         mdDiv.textContent = markdown;
+        docStats.textContent = String(markdown.length) + ' 字符' + (options.turnsCount ? ' · ' + options.turnsCount + ' 轮' : '');
         rebuildFormulas(markdown);
       });
-      tabs.appendChild(cotSelect);
+      tabsControls.appendChild(cotSelect);
     }
+    tabs.appendChild(tabsControls);
 
     // Body
     var body = document.createElement('div');
@@ -374,6 +526,7 @@ window.ChatSavorCore = (function() {
         mdDiv.textContent = mdDiv.value;
         markdown = effectiveMd();
         previewDiv.innerHTML = window.ChatSavorMarkdown.render(markdown);
+        docStats.textContent = String(markdown.length) + ' 字符' + (options.turnsCount ? ' · ' + options.turnsCount + ' 轮' : '');
         rebuildFormulas(markdown);
         editTimer = null;
       }, 200);
@@ -390,7 +543,7 @@ window.ChatSavorCore = (function() {
       var nextFormulas = window.ChatSavorMarkdown.getFormulas(md);
       tabFormulas.textContent = '公式 (' + nextFormulas.length + ')';
       if (nextFormulas.length) {
-        if (!tabFormulas.parentNode) tabs.insertBefore(tabFormulas, cotSelect || null);
+        if (!tabFormulas.parentNode) tabGroup.appendChild(tabFormulas);
       } else if (tabFormulas.parentNode) {
         tabFormulas.parentNode.removeChild(tabFormulas);
       }
@@ -417,9 +570,9 @@ window.ChatSavorCore = (function() {
     function copyWithFeedback(button, action) {
       var label = button.textContent;
       action().then(function(rich) {
-        button.textContent = '✅ 已复制';
+        setBtnLabel(button, '✅ 已复制');
         copyStatus.textContent = rich === false && button === btnRich ? '当前浏览器未能复制富文本，已改为复制 Markdown。' : '';
-        setTimeout(function() { button.textContent = label; }, 1500);
+        setTimeout(function() { setBtnLabel(button, label); }, 1500);
       }).catch(function() {
         copyStatus.textContent = '复制失败，请在 Markdown 或公式页选中内容后手动复制。';
       });
@@ -452,54 +605,88 @@ window.ChatSavorCore = (function() {
     // Footer
     var footer = document.createElement('div');
     footer.className = 'modal-footer';
-    var btnMd = makeBtn('.md', 'btn btn-primary', function() { downloadText(markdown, 'md', 'text/markdown'); });
-    var btnPdf = makeBtn('.pdf', 'btn btn-primary', function() {
+
+    var btnMd = makeBtn('.md', 'btn btn-format', function() { downloadText(markdown, 'md', 'text/markdown'); });
+    var btnPdf = makeBtn('.pdf', 'btn btn-format', function() {
       var original = btnPdf.textContent;
       btnPdf.disabled = true;
-      btnPdf.textContent = '正在生成 PDF…';
+      setBtnLabel(btnPdf, '正在生成 PDF…');
       var prepared = exportPlain(markdown, 'pdf');
       Promise.resolve(downloadPdf(markdown, prepared)).then(function() {
         btnPdf.disabled = false;
-        btnPdf.textContent = original;
+        setBtnLabel(btnPdf, original);
       }).catch(function(error) {
         btnPdf.disabled = false;
-        btnPdf.textContent = original;
+        setBtnLabel(btnPdf, original);
         copyStatus.textContent = 'PDF 生成失败：' + (error && error.message || error);
       });
     });
-    var btnDocx = makeBtn('.docx', 'btn btn-primary', function() {
+    var btnDocx = makeBtn('.docx', 'btn btn-format', function() {
       var prepared = exportPlain(markdown, 'docx');
       var meta = metaApi();
-      if (window.ChatSavorDocx && typeof window.ChatSavorDocx.build === 'function') {
-        var blob = window.ChatSavorDocx.build(prepared.text);
-        saveBlob(blob, prepared.filename.replace(/\.docx$/, '') + '.docx');
-      } else {
+      var docxApi = window.ChatSavorDocx;
+      if (!docxApi || typeof docxApi.build !== 'function') {
         var htmlBody = window.ChatSavorMarkdown ? window.ChatSavorMarkdown.render(prepared.text) : '<pre>' + escapeHtml(prepared.text) + '</pre>';
         var legacyName = meta && prepared.meta ? meta.buildFilename(prepared.meta, 'doc').replace(/\.doc$/, '') : 'ai-response';
         downloadBlob(docxHtml(htmlBody), legacyName + '.doc', 'application/msword');
+        return;
+      }
+      var filename = prepared.filename.replace(/\.docx$/, '') + '.docx';
+      if (docxApi.needsAsyncMedia && docxApi.needsAsyncMedia(prepared.text)) {
+        btnDocx.disabled = true;
+        copyStatus.textContent = '正在嵌入高清图表到 Word…';
+        docxApi.buildAsync(prepared.text).then(function(blob) {
+          if (!blob || blob.size === 0) { copyStatus.textContent = 'Word 生成失败：结果为空，请重试。'; return; }
+          saveBlob(blob, filename);
+          copyStatus.textContent = '✅ 已生成 Word（图片已嵌入为高清 PNG）。';
+        }).catch(function(error) { copyStatus.textContent = 'Word 生成失败：' + (error && error.message || error); })
+          .then(function() { btnDocx.disabled = false; });
+      } else {
+        var blob = docxApi.build(prepared.text);
+        saveBlob(blob, filename);
       }
     });
-    var btnHtml = makeBtn('.html', 'btn btn-primary', function() {
+    var btnTex = makeBtn('.tex', 'btn btn-format', function() {
+      var prepared = exportPlain(markdown, 'tex');
+      var latexApi = window.ChatSavorLatex;
+      if (!latexApi || typeof latexApi.build !== 'function') {
+        copyStatus.textContent = 'LaTeX 导出模块尚未加载，请重新连接页面。';
+        return;
+      }
+      var tex = latexApi.build(prepared.text, prepared.meta || {});
+      saveHistory(markdown, prepared.meta || {});
+      downloadBlob(tex, prepared.filename, 'application/x-tex');
+    });
+    var btnHtml = makeBtn('.html', 'btn btn-format', function() {
       var prepared = exportPlain(markdown, 'html');
       var body = window.ChatSavorMarkdown ? window.ChatSavorMarkdown.render(prepared.text) : '<pre>' + escapeHtml(prepared.text) + '</pre>';
       downloadBlob(singleFileHtml(body, prepared.meta && prepared.meta.title || 'AI Response'), prepared.filename, 'text/html');
     });
-    var btnCopy = makeBtn('复制 Markdown', 'btn btn-secondary', function() {
+    var btnZip = makeBtn('.zip (离线含图)', 'btn btn-format', function() {
+      var pkg = window.ChatSavorAssets;
+      if (!pkg || typeof pkg.buildMarkdownZip !== 'function') { copyStatus.textContent = '离线打包模块尚未加载。'; return; }
+      if (btnZip.disabled) return;
+      btnZip.disabled = true;
+      var meta = metaApi();
+      var pageMeta = meta ? meta.getPageMeta(null, markdown) : {};
+      copyStatus.textContent = '正在打包离线资源…';
+      pkg.buildMarkdownZip(markdown, pageMeta, frontmatterEnabled()).then(function(result) {
+        if (!result.blob || result.blob.size === 0) { copyStatus.textContent = '打包失败：生成结果为空，请重试。'; return; }
+        saveBlob(result.blob, result.filename);
+        saveHistory(markdown, pageMeta);
+        copyStatus.textContent = '✅ 已打包：' + result.stats.fetched + ' 张图片内联，' +
+          (result.stats.failed ? result.stats.failed + ' 张外链失败保留原地址' : '无失败项');
+      }).catch(function(error) { copyStatus.textContent = '打包失败：' + (error && error.message || error); })
+        .then(function() { btnZip.disabled = false; });
+    });
+
+    var btnCopy = makeBtn('复制 Markdown', 'btn btn-primary', function() {
       copyWithFeedback(btnCopy, function() { return window.ChatSavorMarkdown.copy(markdown, false); });
     });
     var btnRich = makeBtn('复制富文本', 'btn btn-secondary', function() {
       copyWithFeedback(btnRich, function() { return window.ChatSavorMarkdown.copy(markdown, true); });
     });
-    var fmLabel = document.createElement('label');
-    fmLabel.className = 'frontmatter-toggle';
-    fmLabel.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#374151;cursor:pointer';
-    var fmCheck = document.createElement('input');
-    fmCheck.type = 'checkbox';
-    fmCheck.checked = frontmatterEnabled();
-    fmCheck.addEventListener('change', function() { setFrontmatterEnabled(fmCheck.checked); });
-    fmLabel.appendChild(fmCheck);
-    fmLabel.appendChild(document.createTextNode('包含 Frontmatter（Obsidian）'));
-    var btnObsidian = makeBtn('发送到 Obsidian', 'btn btn-secondary', function() {
+    var btnObsidian = makeBtn('发送到 Obsidian', 'btn btn-secondary btn-obsidian', function() {
       var meta = metaApi();
       var pageMeta = meta ? meta.getPageMeta(null, markdown) : { title: 'AI Response', platformId: 'generic' };
       var noteContent = meta ? meta.withFrontmatter(markdown, pageMeta, frontmatterEnabled()) : markdown;
@@ -511,8 +698,162 @@ window.ChatSavorCore = (function() {
       saveHistory(markdown, pageMeta);
       window.location.href = uri;
     });
-    footer.appendChild(fmLabel);
-    footer.appendChild(btnMd); footer.appendChild(btnHtml); footer.appendChild(btnPdf); footer.appendChild(btnDocx); footer.appendChild(btnCopy); footer.appendChild(btnRich); footer.appendChild(btnObsidian);
+    var btnVault = makeBtn('保存到本地库', 'btn btn-secondary', function() {
+      var pkg = window.ChatSavorAssets;
+      if (!pkg) { copyStatus.textContent = '离线资源模块尚未加载。'; return; }
+      if (btnVault.disabled) return;
+      btnVault.disabled = true;
+      var meta = metaApi();
+      var pageMeta = meta ? meta.getPageMeta(null, markdown) : {};
+      var finalMd = meta ? meta.withFrontmatter(markdown, pageMeta, frontmatterEnabled()) : markdown;
+      var vaultDir = savedVaultDir().replace(/^\/+|\/+$/g, '');
+      copyStatus.textContent = '正在准备本地库保存…';
+      pkg.collectAndFetchAssets(finalMd).then(function(result) {
+        var assets = result.assets.map(function(a) {
+          var bytes = a.bytes;
+          var bin = '';
+          for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          return { name: a.name, path: a.path, base64: btoa(bin), mimeType: a.mimeType };
+        });
+        if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+          copyStatus.textContent = '当前环境不支持本地库直写。'; return;
+        }
+        chrome.runtime.sendMessage({
+          type: 'CHATSAVOR_SAVE_TO_VAULT',
+          subDir: vaultDir, filename: (meta ? meta.buildFilename(pageMeta, 'md') : 'ai-response.md'),
+          markdown: result.markdown, assets: assets,
+        }, function(response) {
+          if (response && response.ok && response.mode === 'silent') {
+            saveHistory(markdown, pageMeta);
+            copyStatus.textContent = '✅ 已静默保存到本地库（含 ' + assets.length + ' 张图片）';
+          } else if (response && response.ok && response.mode === 'prompt') {
+            copyStatus.textContent = '已打开授权页面，请点击确认保存到本地库。';
+          } else {
+            copyStatus.textContent = '保存失败：' + (response && response.error || '未知错误');
+          }
+        });
+      }).catch(function(error) { copyStatus.textContent = '保存失败：' + (error && error.message || error); })
+        .then(function() { btnVault.disabled = false; });
+    });
+
+    var cardTheme = document.createElement('select');
+    cardTheme.className = 'card-theme-select';
+    [['light', '极简白'], ['dark', '深邃夜'], ['paper', '学术暖纸']].forEach(function(pair) {
+      var opt = document.createElement('option');
+      opt.value = pair[0]; opt.textContent = pair[1];
+      cardTheme.appendChild(opt);
+    });
+    try { cardTheme.value = localStorage.getItem('chatsavor_card_theme') || 'light'; } catch (ignored) {}
+    cardTheme.addEventListener('change', function() { try { localStorage.setItem('chatsavor_card_theme', cardTheme.value); } catch (ignored) {} });
+    var btnCopyCard = makeBtn('复制长图', 'btn btn-secondary', function() {
+      var api = window.ChatSavorCardImage;
+      if (!api) { copyStatus.textContent = '长图卡片模块尚未加载。'; return; }
+      if (btnCopyCard.disabled) return;
+      btnCopyCard.disabled = true;
+      var pageMeta = metaApi() ? metaApi().getPageMeta(null, markdown) : {};
+      copyStatus.textContent = '正在生成高清长图…';
+      api.renderToBlobs(markdown, pageMeta, { theme: cardTheme.value })
+        .then(function(result) {
+          if (!result.blobs.length || result.blobs[0].size === 0) { copyStatus.textContent = '长图生成失败：渲染结果为空，请重试。'; return; }
+          if (navigator.clipboard && typeof navigator.clipboard.write === 'function' && window.ClipboardItem) {
+            navigator.clipboard.write([new ClipboardItem({ 'image/png': result.blobs[0] })]).then(function() {
+              saveHistory(markdown, pageMeta);
+              copyStatus.textContent = result.sliced ? '已复制第 1/' + result.count + ' 张高清卡片；完整卡片请点“下载长图”。' : '已复制高清长图到剪贴板。';
+            }).catch(function() { copyStatus.textContent = '剪贴板不支持图片，请改用“下载长图”。'; });
+          } else copyStatus.textContent = '当前浏览器不支持图片剪贴板，请改用“下载长图”。';
+        }).catch(function(error) { copyStatus.textContent = '长图生成失败：' + (error && error.message || error); })
+        .then(function() { btnCopyCard.disabled = false; });
+    });
+    var btnDownloadCard = makeBtn('下载长图', 'btn btn-secondary', function() {
+      var api = window.ChatSavorCardImage;
+      if (!api) { copyStatus.textContent = '长图卡片模块尚未加载。'; return; }
+      if (btnDownloadCard.disabled) return;
+      btnDownloadCard.disabled = true;
+      var meta = metaApi();
+      var pageMeta = meta ? meta.getPageMeta(null, markdown) : {};
+      var base = meta ? meta.buildFilename(pageMeta, 'png').replace(/\.png$/, '') : 'ai-response';
+      copyStatus.textContent = '正在生成高清长图…';
+      api.renderToBlobs(markdown, pageMeta, { theme: cardTheme.value }).then(function(result) {
+        if (!result.blobs.length || result.blobs[0].size === 0) { copyStatus.textContent = '长图生成失败：渲染结果为空，请重试。'; return; }
+        if (!result.sliced) { saveBlob(result.blobs[0], base + '.png'); saveHistory(markdown, pageMeta); copyStatus.textContent = '已下载高清长图。'; return; }
+        var entries = result.blobs.map(function(blob, i) { return { name: 'card_' + String(i + 1).padStart(2, '0') + '.png', data: blob }; });
+        var zipApi = window.ChatSavorZip;
+        if (zipApi) {
+          Promise.all(entries.map(function(e) { return new Promise(function(resolve) {
+            var r = new FileReader();
+            r.onload = function() { resolve({ name: e.name, data: new Uint8Array(r.result) }); };
+            r.readAsArrayBuffer(e.data);
+          }); })).then(function(bytesEntries) {
+            saveBlob(zipApi.pack(bytesEntries, 'application/zip'), base + '_cards.zip');
+            saveHistory(markdown, pageMeta);
+            copyStatus.textContent = '已下载 ' + result.count + ' 张高清卡片（ZIP）。';
+          });
+        } else {
+          saveBlob(result.blobs[0], base + '.png');
+          saveHistory(markdown, pageMeta);
+          copyStatus.textContent = '已下载第 1 张卡片（ZIP 模块不可用）。';
+        }
+      }).catch(function(error) { copyStatus.textContent = '长图生成失败：' + (error && error.message || error); })
+        .then(function() { btnDownloadCard.disabled = false; });
+    });
+
+    // Frontmatter toggle → moved into .tabs-controls.
+    var fmLabel = document.createElement('label');
+    fmLabel.className = 'frontmatter-toggle';
+    fmLabel.setAttribute('title', '在 .md / ZIP / 本地库 / Obsidian 导出中包含 YAML 元数据头');
+    var fmCheck = document.createElement('input');
+    fmCheck.type = 'checkbox';
+    fmCheck.checked = frontmatterEnabled();
+    fmCheck.addEventListener('change', function() { setFrontmatterEnabled(fmCheck.checked); });
+    var fmSlider = document.createElement('span');
+    fmSlider.className = 'switch-slider';
+    fmSlider.setAttribute('aria-hidden', 'true');
+    var fmText = document.createElement('span');
+    fmText.textContent = 'Frontmatter';
+    fmLabel.appendChild(fmCheck);
+    fmLabel.appendChild(fmSlider);
+    fmLabel.appendChild(fmText);
+    tabsControls.appendChild(fmLabel);
+
+    // ── Two-tier structured footer ──
+    var footerTop = document.createElement('div');
+    footerTop.className = 'footer-row-top';
+    var actionGroup = document.createElement('div');
+    actionGroup.className = 'action-group';
+    actionGroup.appendChild(btnCopy);
+    actionGroup.appendChild(btnRich);
+    actionGroup.appendChild(btnObsidian);
+    actionGroup.appendChild(btnVault);
+
+    var cardCapsule = document.createElement('div');
+    cardCapsule.className = 'card-capsule';
+    cardCapsule.appendChild(cardTheme);
+    var capsuleSep = document.createElement('span');
+    capsuleSep.className = 'capsule-sep';
+    capsuleSep.setAttribute('aria-hidden', 'true');
+    cardCapsule.appendChild(capsuleSep);
+    cardCapsule.appendChild(btnCopyCard);
+    cardCapsule.appendChild(btnDownloadCard);
+
+    footerTop.appendChild(actionGroup);
+    footerTop.appendChild(cardCapsule);
+
+    var footerBottom = document.createElement('div');
+    footerBottom.className = 'footer-row-bottom';
+    var dockLabel = document.createElement('span');
+    dockLabel.className = 'dock-label';
+    dockLabel.setAttribute('aria-hidden', 'true');
+    dockLabel.textContent = '导出文档';
+    footerBottom.appendChild(dockLabel);
+    footerBottom.appendChild(btnMd);
+    footerBottom.appendChild(btnPdf);
+    footerBottom.appendChild(btnDocx);
+    footerBottom.appendChild(btnTex);
+    footerBottom.appendChild(btnHtml);
+    footerBottom.appendChild(btnZip);
+
+    footer.appendChild(footerTop);
+    footer.appendChild(footerBottom);
 
     modal.appendChild(header); modal.appendChild(tabs);
     if (formulas.length || unconverted) modal.appendChild(compatibility);
@@ -525,7 +866,13 @@ window.ChatSavorCore = (function() {
       document.removeEventListener('keydown', escHandler);
       if (activeModalCleanup === closeModal) activeModalCleanup = null;
     };
-    var escHandler = function(e) { if (e.key === 'Escape') closeModal(); };
+    var escHandler = function(e) {
+      if (e.key === 'Escape') closeModal();
+      else if (e.key === 'C' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        btnCopy.click();
+      }
+    };
     overlay.addEventListener('click', function(e) { if (e.target === overlay) closeModal(); });
     closeBtn.addEventListener('click', closeModal);
     document.addEventListener('keydown', escHandler);
@@ -536,12 +883,30 @@ window.ChatSavorCore = (function() {
 
   // ── Helpers ──
 
-  function makeBtn(text, className, onClick) {
+  function makeBtn(text, className, onClick, svgMarkup) {
     var btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = className;
-    btn.textContent = text;
+    if (svgMarkup) {
+      var iconWrap = document.createElement('span');
+      iconWrap.className = 'btn-icon';
+      iconWrap.setAttribute('aria-hidden', 'true');
+      iconWrap.innerHTML = String(svgMarkup).replace(/>\s+</g, '><').trim();
+      btn.appendChild(iconWrap);
+    }
+    var labelWrap = document.createElement('span');
+    labelWrap.className = 'btn-label';
+    labelWrap.textContent = text;
+    btn.appendChild(labelWrap);
     btn.addEventListener('click', onClick);
     return btn;
+  }
+
+  // Update only the visible label inside a button, keeping SVG icons intact.
+  function setBtnLabel(btn, text) {
+    var label = btn.querySelector('.btn-label');
+    if (label) label.textContent = text;
+    else btn.textContent = text;
   }
 
   function saveBlob(blob, filename) {

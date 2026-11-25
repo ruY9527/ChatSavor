@@ -147,19 +147,75 @@
     // 1) Remove slider tracks and colour-clip bars with no explanatory text.
     clone.querySelectorAll('[data-d-component="slider"], [data-d-clip="true"]').forEach(function(n) { n.remove(); });
 
-    // 2) Preserve segmented-control options as a single readable paragraph.
+    // 2) Preserve segmented-control options as real DOM (never raw Markdown that
+    //    Turndown would escape into a leading \[ that swallows the document).
     clone.querySelectorAll('[data-d-component="segmented-control"]').forEach(function(control) {
-      var parts = [];
+      var p = document.createElement('p');
+      var idx = 0;
       control.querySelectorAll('button, [role="radio"], [role="tab"]').forEach(function(btn) {
         var label = (btn.textContent || '').replace(/\s+/g, ' ').trim();
         if (!label) return;
+        if (idx++ > 0) p.appendChild(document.createTextNode(' · '));
         var selected = btn.getAttribute('aria-checked') === 'true' || btn.getAttribute('data-state') === 'on' || btn.classList.contains('selected');
-        parts.push(selected ? '**[✓ ' + label + ']**' : '[' + label + ']');
+        if (selected) {
+          var strong = document.createElement('strong');
+          strong.textContent = '【✓ ' + label + '】';
+          p.appendChild(strong);
+        } else {
+          p.appendChild(document.createTextNode('（' + label + '）'));
+        }
       });
-      var p = document.createElement('p');
-      p.textContent = parts.join(' · ');
-      control.replaceWith(p);
+      if (idx > 0) control.replaceWith(p);
+      else control.remove();
     });
+
+    // Helper: preserve in-grid <svg> visuals as inline SVG data URIs.
+    function svgToImg(node) {
+      if (node.tagName === 'SVG') {
+        var serialized = new XMLSerializer().serializeToString(node);
+        var img = document.createElement('img');
+        img.setAttribute('src', 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serialized));
+        node.replaceWith(img);
+        return;
+      }
+      if (node.querySelectorAll) {
+        Array.from(node.querySelectorAll('svg')).forEach(function(svg) {
+          if (svg.closest('button, [role="button"], a')) return;
+          var serialized = new XMLSerializer().serializeToString(svg);
+          var img = document.createElement('img');
+          img.setAttribute('src', 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(serialized));
+          svg.replaceWith(img);
+        });
+      }
+    }
+
+    // Recursively collect block-level text/image lines (no textContent mush).
+    function extractCellLines(root, out) {
+      out = out || [];
+      if (!root) return out;
+      if (root.nodeType === 1 && root.tagName === 'IMG') { out.push(root.outerHTML); return out; }
+      if (root.nodeType === 1 && /^(?:STRONG|B|H1|H2|H3|H4)$/.test(root.tagName)) {
+        var innerBlocks = root.querySelector('div, p, ul, ol, img');
+        if (!innerBlocks) { out.push('<strong>' + escapeHtml2((root.textContent || '').trim()) + '</strong>'); return out; }
+      }
+      if (root.nodeType === 3) {
+        var t = (root.nodeValue || '').replace(/\s+/g, ' ').trim();
+        if (t) out.push(t);
+        return out;
+      }
+      var hasBlockChild = root.querySelector && root.querySelector('div, p, section, ul, li, img');
+      if (hasBlockChild) {
+        Array.from(root.childNodes || []).forEach(function(child) { extractCellLines(child, out); });
+      } else {
+        var text = (root.textContent || '').replace(/\s+/g, ' ').trim();
+        if (text) out.push(text);
+      }
+      return out;
+    }
+
+    function escapeHtml2(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
 
     // 3) Convert multi-column grids into compact tables with real label headers.
     clone.querySelectorAll('[data-d-component="grid"]').forEach(function(grid) {
@@ -170,41 +226,32 @@
       var cols = colMatch ? parseInt(colMatch[1], 10) : Math.min(items.length, 3);
       if (cols < 1) cols = Math.min(items.length, 3);
 
-      function cellParts(item) {
-        var fragment = document.createElement('div');
-        // Promote image/content wrapped by empty pressable buttons.
+      items.forEach(function(item) {
         Array.from(item.querySelectorAll('button[data-d-component="pressable"]')).forEach(function(btn) {
-          while (btn.firstChild) fragment.appendChild(btn.firstChild);
+          while (btn.firstChild) btn.parentElement.insertBefore(btn.firstChild, btn);
           btn.remove();
         });
-        Array.from(item.childNodes).forEach(function(node) {
-          if (node.nodeType === 1 && node.matches && node.matches('button[data-d-component="pressable"]')) return;
-          fragment.appendChild(node.cloneNode(true));
-        });
-        fragment.querySelectorAll('h1, h2, h3, h4').forEach(function(h) {
-          var strong = document.createElement('strong');
-          strong.textContent = (h.textContent || '').trim();
-          h.replaceWith(strong);
-        });
-        var blocks = [];
-        Array.from(fragment.childNodes).forEach(function(node) {
-          var text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-          if (!text) return;
-          if (node.nodeType === 1 && /^(?:STRONG|IMG)$/.test(node.tagName)) blocks.push(node.outerHTML);
-          else blocks.push(text);
-        });
-        return blocks;
-      }
+        svgToImg(item);
+      });
 
       var parsed = items.map(function(item) {
-        var blocks = cellParts(item);
-        return { label: blocks.length ? blocks[0] : '', value: blocks.slice(1).join('<br>') };
+        var lines = extractCellLines(item, []);
+        return { label: lines.length ? lines[0] : '', value: lines.slice(1).join('<br>') };
       });
+
+      // Intercept all-empty data rows (single-row label-only placeholder cards).
+      var allValuesEmpty = parsed.every(function(p) { return !p.value; });
+      if (allValuesEmpty && items.length === cols) {
+        var p = document.createElement('p');
+        p.textContent = parsed.map(function(x) { return x.label; }).filter(Boolean).join(' ｜ ');
+        grid.replaceWith(p);
+        return;
+      }
+
       var table = document.createElement('table');
       var thead = document.createElement('thead');
       var headRow = document.createElement('tr');
       var tbody = document.createElement('tbody');
-      // The first visual row supplies the real column labels (never "Column 1").
       for (var c = 0; c < cols; c++) {
         var th = document.createElement('th');
         th.innerHTML = parsed[c] && parsed[c].label || '';
@@ -212,7 +259,6 @@
       }
       thead.appendChild(headRow);
       table.appendChild(thead);
-      // Values of the first row, then all following rows, become data cells.
       for (var i = 0; i < items.length; i += cols) {
         var row = document.createElement('tr');
         for (var cc = 0; cc < cols; cc++) {
